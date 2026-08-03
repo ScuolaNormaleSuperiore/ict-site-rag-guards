@@ -19,39 +19,16 @@ if [ -z "$diff_output" ]; then
 	exit 0
 fi
 
-is_generated_asset() {
-	case "$1" in
-		assets/bootstrap-italia/*.map|\
-		assets/bootstrap-italia/**/*.map|\
-		assets/bootstrap-italia/*.min.css|\
-		assets/bootstrap-italia/**/*.min.css|\
-		assets/bootstrap-italia/*.min.js|\
-		assets/bootstrap-italia/**/*.min.js|\
-		assets/css/*.min.css.map|\
-		assets/css/*.min.js.map)
-			return 0
-			;;
-	esac
-
-	return 1
-}
-
+# No path is excluded from the scan. This plugin has no generated or vendored
+# text assets, and the artifacts it does produce (__pycache__/, .pytest_cache/)
+# are already in .gitignore, so they never reach the staging area.
 added_lines="$(printf '%s\n' "$diff_output" | awk '
-	/^\+\+\+ / {
-		file = $2
-		sub(/^b\//, "", file)
-		next
-	}
+	/^\+\+\+ / { next }
 	/^\+/ {
 		sub(/^\+/, "", $0)
-		print file "\t" $0
+		print
 	}
-' | while IFS="$(printf '\t')" read -r file line; do
-	if is_generated_asset "$file"; then
-		continue
-	fi
-	printf '%s\n' "$line"
-done)"
+')"
 
 if [ -z "$added_lines" ]; then
 	exit 0

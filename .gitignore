@@ -224,3 +224,9 @@ CLAUDE.md
 CLAUDE.MD
 DEV
 DEV/
+
+# Instance configuration, written by Cheshire Cat and edited from its admin
+# panel: it belongs to the installation, not to the plugin. The core recreates
+# it from the defaults in settings.py the first time the plugin is activated.
+# Anchored to the repository root, so a settings.json elsewhere stays visible.
+/settings.json
