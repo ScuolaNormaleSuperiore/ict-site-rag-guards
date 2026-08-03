@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local AI instruction symlinks and private dev content
+AGENTS.md
+AGENTS.MD
+CLAUDE.md
+CLAUDE.MD
+DEV
+DEV/
