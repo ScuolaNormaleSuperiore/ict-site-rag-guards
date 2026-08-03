@@ -6,6 +6,14 @@ A single, modular Cheshire Cat AI plugin that adds input/output guardrails, RAG 
 
 Technical proposal — to be configured, measured, and tested against a real Cheshire Cat AI v1 installation. Hook names, thresholds, and budgets below are starting points, not approved requirements.
 
+## Documentation baseline
+
+This project must follow the Stregatto / Cheshire Cat AI v1 documentation:
+
+- `https://cheshire-cat-ai.github.io/docs/1/`
+
+Do not assume Cheshire Cat AI v2 behavior or APIs when designing or implementing this plugin.
+
 ## Scope
 
 - Informational, first-level assistant answering questions about SNS ICT services, based exclusively on official public sources.
