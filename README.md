@@ -1,4 +1,4 @@
-# ict-site-rag-guards
+# ICT Site RAG Guards [RAG-GUARDS]
 
 A single, modular Cheshire Cat AI plugin that adds input/output guardrails, RAG evidence gating, and token-budget controls to the Scuola Normale Superiore ICT chatbot, keeping the ordinary flow to one LLM call and escalating to an LLM judge only when risk or uncertainty justifies it.
 
@@ -10,11 +10,13 @@ Everything else remains a proposal: the modules still to be built, the threshold
 
 ## Documentation baseline
 
-This project must follow the Stregatto / Cheshire Cat AI v1 documentation:
+This project targets **Cheshire Cat AI 1.9.2**, on the `1.x` line, and must follow the Stregatto / Cheshire Cat AI v1 documentation:
 
 - `https://cheshire-cat-ai.github.io/docs/1/`
 
-Do not assume Cheshire Cat AI v2 behavior or APIs when designing or implementing this plugin.
+Do not assume Cheshire Cat AI v2 behavior or APIs when designing or implementing this plugin, and refer to the v1 documentation first for any decision about hooks, flow, or integration. Where the docs and the installed core disagree, the installed core wins: see *Cheshire Cat AI hooks used* below for two cases where it did.
+
+This section is the single source for the version pin and the documentation baseline; the AI instruction files point here rather than restating it.
 
 ## Scope
 
@@ -181,6 +183,8 @@ python -m pip install pytest
 docker compose up -d
 ```
 
+Add `--build` only after changing the image or the core dependencies: it is not needed to run the plugin or its tests, and it is considerably slower.
+
 ### Running the tests
 
 Two equivalent runners live in the plugin root: `run-tests.ps1` for PowerShell and `run-tests.sh` for Linux and macOS. They wrap both environments, take the same three forms, and return pytest's own exit code. Run them from the plugin folder.
@@ -194,6 +198,8 @@ Two equivalent runners live in the plugin root: `run-tests.ps1` for PowerShell a
 Because the exit code is pytest's own, either script can be reused from a git hook or from CI. If a prerequisite is missing — no interpreter with `pytest`, container not running, `compose.yml` not where expected — they say which command fixes it instead of failing obscurely.
 
 The `pre-commit` hook runs `tests/unit` too, and nothing else: a commit must not depend on Docker being up, or the hook would either block legitimate commits or skip in silence. `tests/integration` is for the runners, before pushing.
+
+Two limits of that gate are worth knowing. It runs `pytest` against the files **on disk, not against the staged snapshot**, so with unstaged changes in the working tree what passes is not exactly what is being committed — the hook prints a warning when it detects any. And if no interpreter with `pytest` is available it warns and lets the commit through, on the grounds that blocking for a missing development tool teaches `--no-verify`, which would also disable the secret scan.
 
 The shell version also handles two things the PowerShell one never meets: it falls back to the standalone `docker-compose` binary where Compose v2 is not a docker subcommand, and it picks the first interpreter that can actually import `pytest` rather than the first one on `PATH`, since a `python3` shim with no packages is common.
 
@@ -248,5 +254,5 @@ The same tier is where another plugin's side effects show up. Above its own `max
 
 - Source document: *Workflow RAG Cheshire Cat AI — Chatbot ICT SNS* (internal)
 - [Cheshire Cat AI flow hooks documentation](https://cheshire-cat-ai.github.io/docs/API_Documentation/mad_hatter/core_plugin/hooks/flow/)
-- [Cheshire Cat AI core repository](https://github.com/cheshire-cat-ai/core)
+- [Cheshire Cat AI core repository, tag 1.9.2](https://github.com/cheshire-cat-ai/core/tree/1.9.2) — the revision this plugin is developed against
 - [Cheshire Cat Chatbot WordPress plugin](https://wordpress.org/plugins/cheshire-cat-chatbot)
