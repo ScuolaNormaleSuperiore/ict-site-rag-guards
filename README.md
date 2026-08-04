@@ -69,8 +69,7 @@ Main files:
 - `checks.py`: pure guard logic
 - `settings.py`: plugin settings model and shipped defaults
 - `ict_site_rag_guards.py`: Cheshire Cat hooks and settings loading
-- `tests/unit/`: tests that do not need the Cheshire Cat core
-- `tests/integration/`: tests that import the plugin with Cheshire Cat available
+- `tests/`: the test suite, described in [DOC/TESTING.md](DOC/TESTING.md)
 
 Project-specific architecture notes, roadmap, and development guidance live under `DEV/AGENTS/` and `DEV/TODO/`.
 
@@ -88,7 +87,7 @@ Run the full suite:
 python run-tests.py
 ```
 
-For the full testing model, test layout, runner behavior, and manual verification notes, see [DOC/TESTING.md](C:/SPAZIODATI/CodiceProgettiLOCALE/ProveStregatto/stregattov1/core/cat/plugins/ict-site-rag-guards/DOC/TESTING.md:1).
+These are the only two commands needed to run the tests. Everything else about testing — the test layout, which tests need the Cheshire Cat container, how the runner behaves, and what is verified manually — is in [DOC/TESTING.md](DOC/TESTING.md).
 
 ## Packaging
 
