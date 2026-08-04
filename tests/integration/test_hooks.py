@@ -92,6 +92,24 @@ class TestHookRegistration:
         # Core plugin hooks have priority 0; this one must be higher to take over.
         assert guards.dispatch_fast_reply.priority > 0
 
+    def test_settings_model_is_registered_under_the_name_the_core_looks_up(self):
+        # The core collects @plugin overrides into a dict keyed by function name
+        # and reads only "settings_model" out of it. Rename the function and the
+        # override is ignored in silence: the admin form shows nothing and every
+        # setting falls back to the model defaults, with no error anywhere.
+        assert settings_module.settings_model.name == "settings_model"
+
+    def test_settings_model_returns_the_class_the_admin_form_is_built_from(self):
+        model = settings_module.settings_model.function()
+
+        assert model is settings_module.IctSiteRagGuardsSettings
+        # What the core actually renders the form from.
+        assert model.model_json_schema()["properties"].keys() >= {
+            "help_desk_email",
+            "max_message_chars",
+            "message_too_long",
+        }
+
 
 class TestInputGuard:
     def test_answers_immediately_when_the_message_is_too_long(self):
@@ -187,6 +205,14 @@ class TestDispatchFastReply:
         setattr(cat.working_memory, guards.VERDICT_ATTRIBUTE, "verdict_never_defined")
 
         assert "output" not in dispatch_fast_reply({}, cat)
+
+    def test_keeps_a_reply_another_plugin_set_when_no_verdict_is_set(self):
+        # The mirror of the input guard case, and the reason this hook returns
+        # what it received instead of an empty dict: a reply already decided by
+        # another plugin, or by the core plugin, must survive this hook.
+        foreign = {"output": "You have sent too many messages."}
+
+        assert dispatch_fast_reply(foreign, make_cat()) == foreign
 
 
 class TestConfiguration:
