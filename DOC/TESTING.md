@@ -80,4 +80,4 @@ Verification against a real instance is currently manual: activate the plugin, s
 
 This tier matters because it catches what the other two cannot. The interaction with the `Rate Limiter` plugin is the case in point: its checks used to intercept messages before this plugin ever saw them, and nothing in the code of either plugin showed it. The hook priority now settles who answers, and a unit test guards the priority, but the ordering itself is only ever confirmed on a running instance.
 
-The same tier is where another plugin's side effects show up. Above its own `max_prompt_length`, Rate Limiter still records an infraction and suspends the user for 5, 15 or 60 minutes, silently blocking their next legitimate messages, even though the reply delivered is this plugin's. No test can see that either. See `DEV/AGENTS/ISSUES_TODO.md`.
+The same tier is where another plugin's side effects show up. Above its own `max_prompt_length`, Rate Limiter still records an infraction and suspends the user for 5, 15 or 60 minutes, silently blocking their next legitimate messages, even though the reply delivered is this plugin's. No test can see that either.

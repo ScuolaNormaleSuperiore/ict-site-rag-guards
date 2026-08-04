@@ -50,8 +50,12 @@ class IctSiteRagGuardsSettings(BaseModel):
         description=(
             "Messages longer than this are answered with a static reply, without "
             "reaching the language model, so they cost no generation tokens. "
-            "0 disables the check. Keep this below the Rate Limiter plugin's own "
-            "limit, otherwise that plugin answers first with its own message."
+            "Set it to 0 to disable this check entirely. "
+            "If the Rate Limiter plugin is also installed, keep this limit below "
+            "its own max_prompt_length: for a message longer than that one but "
+            "shorter than this, Rate Limiter is the plugin that stops it, with "
+            "its own text, and it also records an infraction and suspends the "
+            "user for several minutes."
         ),
     )
 
