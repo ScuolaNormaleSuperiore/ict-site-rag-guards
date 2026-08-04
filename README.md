@@ -95,6 +95,8 @@ On Linux or macOS:
 ./run-tests.sh
 ```
 
+For the full testing model, test layout, runner behavior, and manual verification notes, see [DOC/TESTING.md](C:/SPAZIODATI/CodiceProgettiLOCALE/ProveStregatto/stregattov1/core/cat/plugins/ict-site-rag-guards/DOC/TESTING.md:1).
+
 ## License
 
 GPL-3.0-only. See `LICENSE`.
