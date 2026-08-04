@@ -290,7 +290,7 @@ class TestConfiguration:
         assert (
             guards.load_settings(make_cat()).help_desk_email
             == settings_module.DEFAULT_HELP_DESK_EMAIL
-            == "helpdesk@sns.it"
+            == "helpdesk@example.org"
         )
 
 
@@ -326,7 +326,7 @@ class TestSettingsModel:
         assert settings_module.IctSiteRagGuardsSettings().model_dump_json()
 
     @pytest.mark.parametrize(
-        "bad_email", ["not-an-address", "@sns.it", "ict@", " "]
+        "bad_email", ["not-an-address", "@example.org", "ict@", " "]
     )
     def test_email_must_look_like_an_address(self, bad_email):
         with pytest.raises(ValueError):

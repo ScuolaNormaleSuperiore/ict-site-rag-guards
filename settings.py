@@ -17,7 +17,7 @@ try:
 except ImportError:  # pragma: no cover - depends on how the module is loaded
     from checks import DEFAULT_MAX_MESSAGE_CHARS
 
-DEFAULT_HELP_DESK_EMAIL = "helpdesk@sns.it"
+DEFAULT_HELP_DESK_EMAIL = "helpdesk@example.org"
 
 # Bilingual in a single text until language detection (Fase 2) populates
 # `cat.working_memory.user_language` and lets us pick one language per turn.
@@ -73,7 +73,9 @@ class IctSiteRagGuardsSettings(BaseModel):
         # here is a content mistake, not a security boundary.
         value = value.strip()
         if "@" not in value.strip("@"):
-            raise ValueError("must be an email address, for example helpdesk@sns.it")
+            raise ValueError(
+                "must be an email address, for example helpdesk@example.org"
+            )
         return value
 
     @field_validator("message_too_long")

@@ -35,7 +35,8 @@ class TestPluginMetadata:
 
         assert plugin["name"] == "ICT Site RAG Guards"
         assert "guardrails" in plugin["description"].lower()
-        assert "rag evidence gating" in plugin["description"].lower()
+        assert "rag flow" in plugin["description"].lower()
+        assert "retrieval or generation" in plugin["description"].lower()
 
 
 class TestShippedSettings:

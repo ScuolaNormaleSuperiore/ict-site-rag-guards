@@ -1,4 +1,4 @@
-"""Guardrail pipeline for the SNS ICT support chatbot: Cheshire Cat hooks.
+"""Guardrail pipeline for a website ICT support chatbot: Cheshire Cat hooks.
 
 This module is the adapter between Cheshire Cat and the pure decision logic in
 `checks.py`. It reads from the Cat, loads the configuration, delegates every

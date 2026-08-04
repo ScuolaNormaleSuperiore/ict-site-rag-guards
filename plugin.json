@@ -1,10 +1,10 @@
 {
     "name": "ICT Site RAG Guards",
     "version": "0.0.1",
-    "description": "Input/output guardrails, RAG evidence gating and token-budget controls for the Scuola Normale Superiore ICT support chatbot. Keeps the ordinary flow to one LLM call and answers with a static message when the request must not reach the model.",
+    "description": "Plugin that adds deterministic, configurable guardrails to a website chatbot's RAG flow, so risky or invalid requests can be stopped early before retrieval or generation.",
     "author_name": "Servizi Informativi SNS",
     "author_url": "https://ict.sns.it",
     "plugin_url": "https://github.com/ScuolaNormaleSuperiore/ict-site-rag-guards",
-    "tags": "guardrails, rag, evidence gate, privacy, ict, sns",
+    "tags": "guardrails, rag, evidence gate, privacy, ict, chatbot",
     "thumb": "https://raw.githubusercontent.com/ScuolaNormaleSuperiore/ict-site-rag-guards/main/logo.png"
 }
