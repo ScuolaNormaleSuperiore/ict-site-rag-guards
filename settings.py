@@ -19,8 +19,9 @@ except ImportError:  # pragma: no cover - depends on how the module is loaded
 
 DEFAULT_HELP_DESK_EMAIL = "helpdesk@example.org"
 
-# Bilingual in a single text until language detection (Fase 2) populates
-# `cat.working_memory.user_language` and lets us pick one language per turn.
+# Bilingual in a single text, deliberately: the plugin does not detect the
+# language of incoming messages, so it cannot pick one. A test asserts both
+# languages are present. See DEV/TODO/RagGuardsPlan.md, Fase 2.
 DEFAULT_MESSAGE_TOO_LONG = (
     "La tua richiesta è troppo lunga per essere elaborata. "
     "Riformulala in modo più breve, indicando solo il servizio ICT "
