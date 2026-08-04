@@ -76,26 +76,29 @@ Project-specific architecture notes, roadmap, and development guidance live unde
 
 ## Testing
 
-Unit tests only:
-
-```powershell
-.\run-tests.ps1 -Unit
-```
-
-Full suite:
-
-```powershell
-.\run-tests.ps1
-```
-
-On Linux or macOS:
+Run unit tests only:
 
 ```bash
-./run-tests.sh --unit
-./run-tests.sh
+python run-tests.py --unit
+```
+
+Run the full suite:
+
+```bash
+python run-tests.py
 ```
 
 For the full testing model, test layout, runner behavior, and manual verification notes, see [DOC/TESTING.md](C:/SPAZIODATI/CodiceProgettiLOCALE/ProveStregatto/stregattov1/core/cat/plugins/ict-site-rag-guards/DOC/TESTING.md:1).
+
+## Packaging
+
+Build the distributable zip with:
+
+```bash
+python package-plugin.py
+```
+
+When a new file must be shipped with the plugin, update `package-plugin.py` so the release package stays explicit and complete.
 
 ## License
 

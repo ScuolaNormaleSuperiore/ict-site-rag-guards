@@ -40,7 +40,7 @@ Add `--build` only after changing the image or the core dependencies: it is not 
 
 ## Running the tests
 
-Two equivalent runners live in the plugin root: `run-tests.ps1` for PowerShell and `run-tests.sh` for Linux and macOS. They wrap both environments, take the same three forms, and return pytest's own exit code.
+The single source of truth is `run-tests.py`. `run-tests.ps1` and `run-tests.sh` are thin wrappers for PowerShell and shell users. All three return pytest's own exit code.
 
 | What it runs | PowerShell | Linux / macOS |
 | --- | --- | --- |
@@ -48,15 +48,21 @@ Two equivalent runners live in the plugin root: `run-tests.ps1` for PowerShell a
 | the whole suite, in the container | `.\run-tests.ps1` | `./run-tests.sh` |
 | the whole suite, one line per test | `.\run-tests.ps1 -Detailed` | `./run-tests.sh --detailed` |
 
+Direct Python entrypoint:
+
+```bash
+python run-tests.py --unit
+python run-tests.py
+python run-tests.py --detailed
+```
+
 Because the exit code is pytest's own, either script can be reused from a git hook or from CI. If a prerequisite is missing, no interpreter with `pytest`, container not running, `compose.yml` not where expected, they say which command fixes it instead of failing obscurely.
 
 The `pre-commit` hook runs `tests/unit` too, and nothing else: a commit must not depend on Docker being up, or the hook would either block legitimate commits or skip in silence. `tests/integration` is for the runners, before pushing.
 
 Two limits of that gate are worth knowing. It runs `pytest` against the files on disk, not against the staged snapshot, so with unstaged changes in the working tree what passes is not exactly what is being committed. And if no interpreter with `pytest` is available it warns and lets the commit through, on the grounds that blocking for a missing development tool teaches `--no-verify`, which would also disable the secret scan.
 
-The shell version also handles two things the PowerShell one never meets: it falls back to the standalone `docker-compose` binary where Compose v2 is not a docker subcommand, and it picks the first interpreter that can actually import `pytest` rather than the first one on `PATH`.
-
-The git hooks deliberately keep referring to the PowerShell runner, because the development machine for this plugin is Windows.
+The Python runner handles both Compose v2 and the standalone `docker-compose` binary. The shell wrappers exist only as convenience entrypoints.
 
 Calling `pytest` directly works too. Locally:
 
