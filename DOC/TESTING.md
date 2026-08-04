@@ -27,8 +27,10 @@ Two options, depending on which tests you want to run.
 Local interpreter, `tests/unit` only:
 
 ```bash
-python -m pip install pytest
+python -m pip install pytest phonenumberslite
 ```
+
+`phonenumberslite` is there because `checks.py` imports it: the personal-data guard validates phone numbers against a numbering plan rather than matching a shape. It is the plugin's only runtime dependency, declared in `requirements.txt`, and the core installs it on activation — but a local run needs it locally too. Without it `tests/unit` fails at import, loudly, which is the wanted outcome: a guard whose behaviour depends on what happens to be installed is worse than one that refuses to start.
 
 Container, whole suite:
 

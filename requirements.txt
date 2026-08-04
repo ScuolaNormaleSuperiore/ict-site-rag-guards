@@ -1,0 +1,12 @@
+# Installed by Cheshire Cat AI when the plugin is activated.
+#
+# The lite build is deliberate: the full `phonenumbers` package carries
+# geocoding, carrier and timezone data for 20.9 MB installed, none of which is
+# used here. This one is 2.2 MB and provides the parsing and validation the
+# personal-data guard needs.
+#
+# No `==` pin: the core compares only the package name against what is already
+# installed and ignores the version, so an exact pin would be skipped in silence
+# when another plugin installed a different one — and would break that plugin if
+# this one is activated first. See DEV/AGENTS/AI_BEHAVIOR.md.
+phonenumberslite>=9

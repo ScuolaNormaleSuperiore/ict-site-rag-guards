@@ -59,6 +59,16 @@ class TestReleasePackageContents:
             "plugin would fail to load."
         )
 
+    def test_requirements_are_shipped_when_they_exist(self):
+        # The worst omission of all, and the one the check above cannot see
+        # because it only looks at Python modules: without requirements.txt in
+        # the package, the core installs nothing at activation and the plugin
+        # fails on its first import.
+        if not (REPO_ROOT / "requirements.txt").is_file():
+            pytest.skip("the plugin declares no dependencies")
+
+        assert "requirements.txt" in load_packaging_module().INCLUDED_FILES
+
     def test_every_listed_file_exists(self):
         # The mirror case: a renamed or moved file leaves a stale entry in the
         # list. The build raises on it, but only when someone runs the build.

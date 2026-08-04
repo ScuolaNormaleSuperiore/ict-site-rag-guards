@@ -29,7 +29,7 @@ Planned next steps include additional input checks, evidence sufficiency gating,
 - Cheshire Cat AI `1.9.2` on the `1.x` line
 - A website chatbot integration that sends user messages to Cheshire Cat AI
 
-The plugin is self-contained: it requires no companion plugin, and any third-party dependency it needs is declared in its own `requirements.txt`, which Cheshire Cat AI installs on activation. It currently declares none.
+The plugin is self-contained: it requires no companion plugin, and every third-party dependency it needs is declared in its own `requirements.txt`, which Cheshire Cat AI installs on activation. It currently declares one, `phonenumberslite`, used to validate phone numbers against a numbering plan instead of matching them by shape.
 
 Sharing an installation with other plugins is supported: when one of its own checks does not trigger, a reply another plugin has already produced is passed through untouched.
 

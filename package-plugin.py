@@ -27,6 +27,7 @@ INCLUDED_FILES = (
     "plugin.json",
     "README.md",
     "LICENSE",
+    "requirements.txt",
     "checks.py",
     "settings.py",
     "ict_site_rag_guards.py",

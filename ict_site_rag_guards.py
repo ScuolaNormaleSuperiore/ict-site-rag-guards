@@ -40,10 +40,24 @@ from pydantic import ValidationError
 # the relative import the correct one at runtime. The absolute fallback is what
 # lets the tests import this module directly, with the plugin folder on the path.
 try:
-    from .checks import VERDICT_MESSAGE_TOO_LONG, extract_text, run_input_checks
+    from .checks import (
+        VERDICT_MESSAGE_TOO_LONG,
+        VERDICT_PERSONAL_DATA,
+        extract_text,
+        matched_personal_data_kinds,
+        phone_number_types,
+        run_input_checks,
+    )
     from .settings import IctSiteRagGuardsSettings
 except ImportError:  # pragma: no cover - depends on how the module is loaded
-    from checks import VERDICT_MESSAGE_TOO_LONG, extract_text, run_input_checks
+    from checks import (
+        VERDICT_MESSAGE_TOO_LONG,
+        VERDICT_PERSONAL_DATA,
+        extract_text,
+        matched_personal_data_kinds,
+        phone_number_types,
+        run_input_checks,
+    )
     from settings import IctSiteRagGuardsSettings
 
 # Attribute used to carry a verdict across hooks within the same turn.
@@ -61,7 +75,14 @@ INPUT_GUARD_PRIORITY = -1
 # if the two get out of step.
 REPLY_SETTING_BY_VERDICT = {
     VERDICT_MESSAGE_TOO_LONG: "message_too_long",
+    VERDICT_PERSONAL_DATA: "personal_data_detected",
 }
+
+# Which personal-data detectors were switched off the last time we looked. A
+# detector disabled from the admin panel leaves no other trace, and this plugin
+# exists to prevent silent gaps, so a change is announced in the log once
+# instead of at every turn.
+_ANNOUNCED_DISABLED_DETECTORS: tuple[str, ...] | None = None
 
 
 def load_settings(cat) -> IctSiteRagGuardsSettings:
@@ -117,6 +138,75 @@ def reply_for(verdict: str, settings: IctSiteRagGuardsSettings) -> str | None:
     return _render(getattr(settings, setting_name), settings)
 
 
+def announce_disabled_detectors(settings: IctSiteRagGuardsSettings) -> None:
+    """Log the personal-data detectors that are switched off, when that changes.
+
+    Four independent toggles are four ways to disable a privacy control without
+    leaving a trace anywhere. This is the only place that state becomes visible
+    without opening the admin form.
+    """
+    global _ANNOUNCED_DISABLED_DETECTORS
+
+    disabled = tuple(
+        name
+        for name, enabled in (
+            ("email", settings.detect_email),
+            ("codice_fiscale", settings.detect_codice_fiscale),
+            ("iban", settings.detect_iban),
+            ("phone", settings.detect_phone),
+        )
+        if not enabled
+    )
+
+    if disabled == _ANNOUNCED_DISABLED_DETECTORS:
+        return
+
+    if disabled:
+        log.warning(
+            f"[ict-site-rag-guards] personal-data detectors disabled: "
+            f"{', '.join(disabled)}"
+        )
+    else:
+        log.info("[ict-site-rag-guards] all personal-data detectors enabled")
+
+    _ANNOUNCED_DISABLED_DETECTORS = disabled
+
+
+def blocked_detail(
+    verdict: str, text: str, settings: IctSiteRagGuardsSettings
+) -> str:
+    """Context for the log line, never the message itself.
+
+    The refused text must not reach the logs: on the personal-data verdict that
+    would defeat the point of the check. Only the shape of the violation is
+    recorded — how long the message was, or which detector fired.
+    """
+    if verdict == VERDICT_MESSAGE_TOO_LONG:
+        return f", length={len(text)} chars (limit {settings.max_message_chars})"
+
+    if verdict == VERDICT_PERSONAL_DATA:
+        kinds = matched_personal_data_kinds(
+            text,
+            detect_email=settings.detect_email,
+            detect_codice_fiscale=settings.detect_codice_fiscale,
+            detect_iban=settings.detect_iban,
+            detect_phone=settings.detect_phone,
+            allowed_email=settings.help_desk_email,
+            phone_region=settings.phone_region,
+        )
+        detail = f", detected={'+'.join(kinds)}"
+
+        # The kind of number is useful to whoever reads the logs, and is not a
+        # setting: see the note on `phone_number_types`.
+        if "phone" in kinds:
+            types = phone_number_types(text, settings.phone_region)
+            detail += f" ({'+'.join(sorted(set(types)))})"
+
+        return detail
+
+    return ""
+
+
 @hook("fast_reply", priority=INPUT_GUARD_PRIORITY)
 def guard_input_message(fast_reply, cat):
     """Run the input checks and answer immediately when one of them trips.
@@ -135,8 +225,10 @@ def guard_input_message(fast_reply, cat):
     setattr(cat.working_memory, VERDICT_ATTRIBUTE, None)
 
     settings = load_settings(cat)
+    announce_disabled_detectors(settings)
+
     text = extract_text(getattr(cat.working_memory, "user_message_json", None))
-    verdict = run_input_checks(text, settings.max_message_chars)
+    verdict = run_input_checks(text, settings)
 
     if verdict is None:
         return fast_reply
@@ -150,9 +242,9 @@ def guard_input_message(fast_reply, cat):
     setattr(cat.working_memory, VERDICT_ATTRIBUTE, verdict)
 
     log.info(
-        f"[ict-site-rag-guards] input blocked, verdict='{verdict}', "
-        f"length={len(text)} chars (limit {settings.max_message_chars}); "
-        f"no retrieval, no generation, nothing stored"
+        f"[ict-site-rag-guards] input blocked, verdict='{verdict}'"
+        f"{blocked_detail(verdict, text, settings)}; "
+        f"no retrieval, no generation, nothing stored in memory"
     )
     return {"output": reply}
 

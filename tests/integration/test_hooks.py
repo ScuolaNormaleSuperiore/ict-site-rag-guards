@@ -172,6 +172,94 @@ class TestInputGuard:
         assert "output" not in guard_input_message({}, cat)
 
 
+class TestPersonalDataGuard:
+    """The verdict that justified putting the input checks on `fast_reply`."""
+
+    VALID_CODICE_FISCALE = "RCCMNL83S18D969H"
+
+    def test_answers_immediately_when_the_message_carries_personal_data(self):
+        cat = make_cat()
+
+        result = send(cat, "Non riesco ad accedere con mario.rossi@sns.it")
+
+        assert "output" in result
+        assert settings_module.DEFAULT_HELP_DESK_EMAIL in result["output"]
+
+    def test_records_the_personal_data_verdict(self):
+        cat = make_cat()
+        send(cat, f"Il mio codice fiscale è {self.VALID_CODICE_FISCALE}")
+        assert verdict_of(cat) == checks.VERDICT_PERSONAL_DATA
+
+    def test_the_reply_states_the_message_was_not_stored(self):
+        # The claim is only true on this path, where nothing reaches the vector
+        # database. A refusal that dropped it would quietly weaken the promise.
+        cat = make_cat()
+
+        output = send(cat, "scrivimi a mario.rossi@sns.it")["output"]
+
+        assert "non è stato memorizzato" in output
+        assert "was not stored" in output
+
+    def test_the_configured_help_desk_address_is_not_personal_data(self):
+        cat = make_cat({"help_desk_email": "ict@example.org"})
+
+        result = send(cat, "Ho scritto a ict@example.org e non ho risposta")
+
+        assert "output" not in result
+
+    def test_a_clean_ict_question_reaches_the_flow(self):
+        cat = make_cat()
+        incoming = {}
+
+        assert send(cat, "Ricevo l'errore 0x80070005 sulla porta 8080", incoming) is (
+            incoming
+        )
+
+    def test_detectors_can_be_disabled_from_the_settings(self):
+        cat = make_cat({"detect_email": False})
+
+        assert "output" not in send(cat, "scrivimi a mario.rossi@sns.it")
+
+    def test_blocked_detail_names_the_detector_without_the_message(self):
+        # What reaches the log: the shape of the violation, never the text.
+        settings = settings_module.IctSiteRagGuardsSettings()
+
+        detail = guards.blocked_detail(
+            checks.VERDICT_PERSONAL_DATA, "scrivimi a mario.rossi@sns.it", settings
+        )
+
+        assert detail == ", detected=email"
+        assert "mario.rossi" not in detail
+
+    def test_blocked_detail_records_the_kind_of_phone_number(self):
+        settings = settings_module.IctSiteRagGuardsSettings()
+
+        detail = guards.blocked_detail(
+            checks.VERDICT_PERSONAL_DATA, "chiamatemi allo 050 509111", settings
+        )
+
+        assert detail == ", detected=phone (fixed_line)"
+        assert "509111" not in detail
+
+    def test_a_landline_is_refused(self):
+        # The case the hand-written patterns could not cover.
+        cat = make_cat()
+
+        assert "output" in send(cat, "Chiamatemi allo 050 509111")
+
+    def test_the_configured_region_is_honoured(self):
+        cat = make_cat({"phone_region": "US"})
+
+        assert "output" not in send(cat, "Chiamatemi allo 050 509111")
+
+    def test_an_invalid_region_is_rejected_by_the_settings_model(self):
+        # Falling back to the defaults keeps the detector working, rather than
+        # leaving it silently finding nothing.
+        cat = make_cat({"phone_region": "Italia"})
+
+        assert guards.load_settings(cat).phone_region == checks.DEFAULT_PHONE_REGION
+
+
 class TestDispatchFastReply:
     """The post-recall path, used by the evidence gate of Fase 3."""
 
