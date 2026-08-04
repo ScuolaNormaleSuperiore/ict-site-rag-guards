@@ -5,7 +5,7 @@ object exposing a working memory, and optionally a plugin registry, is enough.
 They do need the core to be importable, because the module under test imports
 `cat.log` and `cat.mad_hatter.decorators`, so they are skipped where it is not:
 
-    .\\run-tests.ps1        (or ./run-tests.sh)
+    python run-tests.py
 
 Two things here are worth more than the sum of the assertions.
 

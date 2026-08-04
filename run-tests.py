@@ -1,7 +1,7 @@
 """Run the ict-site-rag-guards test suite.
 
-This is the single source of truth for test execution. Shell-specific launchers
-such as `run-tests.ps1` and `run-tests.sh` are thin wrappers around this file.
+This is the single source of truth for test execution: the pre-commit hook, CI
+and manual runs all go through this file. See `DOC/TESTING.md`.
 """
 
 from __future__ import annotations
@@ -136,7 +136,7 @@ def run_container_suite(detailed: bool) -> int:
         print("Or run only the unit tests:  python run-tests.py --unit", file=sys.stderr)
         return 1
 
-    print(f"Full suite (unit + contract) in the '{SERVICE}' container")
+    print(f"Full suite (unit + integration) in the '{SERVICE}' container")
 
     command = [
         *compose_cmd,
