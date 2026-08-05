@@ -4,10 +4,16 @@ This module is the adapter between Cheshire Cat and the pure decision logic in
 `checks.py`. It reads from the Cat, loads the configuration, delegates every
 decision, and writes back. No threshold and no rule live here.
 
-Two hooks, at two different points of the flow:
+One hook: `fast_reply`, for verdicts that depend on the incoming message alone.
 
-    fast_reply       -> verdicts that depend on the incoming message alone
-    agent_fast_reply -> verdicts that can only be formed after the recall
+A second hook on `agent_fast_reply` existed and was removed. It was the dispatch
+point for verdicts that can only be formed after the recall — the evidence gate
+of Fase 3 — and that gate is not planned: refusing on an empty recall duplicates
+an instruction the deployed prompt already carries, while refusing greetings and
+follow-up questions. With no check producing a post-recall verdict, the hook
+registered a behaviour the plugin does not have. If such a check ever arrives,
+`agent_fast_reply` is still the only place it can reply from, and the reasoning
+is in `DEV/AGENTS/PROJECT.md`, section *Why input checks run on `fast_reply`*.
 
 Input checks run on `fast_reply`, the earliest hook, for two reasons that both
 matter more than the single dispatch point the design document assumes:
@@ -29,7 +35,7 @@ and `before_cat_sends_message`. That is intentional: there is nothing to filter
 in a reply we wrote ourselves, and an over-long message is better left out of
 the history.
 
-Reference: DEV/TODO/Workflow_RAG_Cheshire_Cat_AI_semplificato_v12.docx, Fasi 1-3.
+Reference: DEV/TODO/Workflow_RAG_Cheshire_Cat_AI_semplificato_v12.docx, Fasi 1-2.
 """
 
 import os
@@ -47,6 +53,7 @@ try:
         CATEGORY_LIMITS,
         CATEGORY_PRIVACY,
         CATEGORY_SECURITY,
+        STAGE_INPUT,
         VERDICT_MESSAGE_LENGTH,
         VERDICT_PERSONAL_DATA,
         VERDICT_PROMPT_INJECTION,
@@ -56,14 +63,19 @@ try:
         matched_prompt_injection_pattern,
         phone_number_types,
         run_input_checks,
+        stage_of,
     )
-    from .prompt_injection_classifier import classify_prompt_injection
+    from .prompt_injection_classifier import (
+        classifier_load_error,
+        classify_prompt_injection,
+    )
     from .settings import IctSiteRagGuardsSettings
 except ImportError:  # pragma: no cover - depends on how the module is loaded
     from checks import (
         CATEGORY_LIMITS,
         CATEGORY_PRIVACY,
         CATEGORY_SECURITY,
+        STAGE_INPUT,
         VERDICT_MESSAGE_LENGTH,
         VERDICT_PERSONAL_DATA,
         VERDICT_PROMPT_INJECTION,
@@ -73,13 +85,21 @@ except ImportError:  # pragma: no cover - depends on how the module is loaded
         matched_prompt_injection_pattern,
         phone_number_types,
         run_input_checks,
+        stage_of,
     )
-    from prompt_injection_classifier import classify_prompt_injection
+    from prompt_injection_classifier import (
+        classifier_load_error,
+        classify_prompt_injection,
+    )
     from settings import IctSiteRagGuardsSettings
 
-# Attribute used to carry a verdict across hooks within the same turn.
-# `WorkingMemory` allows extra attributes and lives for the whole session, so
-# the verdict is always reset at the beginning of each turn.
+# Where the verdict of the turn is recorded. `WorkingMemory` allows extra
+# attributes and lives for the whole session, so it is reset at the beginning of
+# every turn — a stale verdict would otherwise describe the wrong message.
+#
+# Written and never read inside this plugin, deliberately: it used to be the
+# carrier between two hooks, and it is now the trace the telemetry module will
+# read instead of parsing log lines.
 VERDICT_ATTRIBUTE = "ict_guard_verdict"
 
 # Runs after every other plugin on `fast_reply`. The Rate Limiter plugin uses
@@ -108,6 +128,12 @@ REPLY_SETTING_BY_VERDICT = {
 # gaps, so the whole configuration is announced once and then only when it
 # changes — not at every turn, which would be noise on every conversation.
 _ANNOUNCED_GUARD_SUMMARY: str | None = None
+
+# The classifier failure already reported. The classifier is fail-open, so a
+# model that cannot load leaves the message unblocked on every turn — reporting
+# it once per turn would bury the log without adding information, since the state
+# cannot change until the plugin reloads.
+_ANNOUNCED_CLASSIFIER_FAILURE: str | None = None
 
 
 def load_settings(cat) -> IctSiteRagGuardsSettings:
@@ -192,8 +218,13 @@ def enabled_check_names(settings: IctSiteRagGuardsSettings) -> tuple[str, ...]:
         names.append("injection_patterns")
     if enabled_privacy_detectors(settings):
         names.append("personal_data")
-    if settings.detect_prompt_injection_classifier:
+    if settings.detect_prompt_injection_classifier and not classifier_load_error(
+        settings.prompt_injection_classifier_model.value
+    ):
         # Last on purpose: it runs only when every deterministic check passed.
+        # Enabled in the settings is not enough — a model that failed to load is
+        # not covering anything, and listing it would make the line claim a
+        # coverage the turn did not have.
         names.append("injection_classifier")
     return tuple(names)
 
@@ -321,6 +352,44 @@ def blocked_detail(
     return ""
 
 
+def announce_classifier_failure(
+    error: Exception, settings: IctSiteRagGuardsSettings
+) -> None:
+    """Report a fail-open classifier once, naming what still covers the turn.
+
+    Once per failure rather than once per message: the classifier cannot recover
+    without the plugin reloading, so the state is constant and repeating it every
+    turn buries the log exactly when a configuration problem needs diagnosing.
+
+    What the line must say is *what is left*, because the announcement of the
+    active guards was built from the settings and therefore claimed a classifier
+    that turns out not to run. When the built-in patterns are off as well, this is
+    the only line saying the security category covers nothing.
+    """
+    global _ANNOUNCED_CLASSIFIER_FAILURE
+
+    reported = f"{settings.prompt_injection_classifier_model.value}: {error}"
+    if reported == _ANNOUNCED_CLASSIFIER_FAILURE:
+        return
+    _ANNOUNCED_CLASSIFIER_FAILURE = reported
+
+    if settings.detect_prompt_injection_custom:
+        remaining = (
+            f"the {CATEGORY_SECURITY} guard continues on its built-in patterns only"
+        )
+    else:
+        remaining = (
+            f"no guard covers: {CATEGORY_SECURITY} — the built-in patterns are "
+            "disabled too"
+        )
+
+    log.warning(
+        f"[ict-site-rag-guards] prompt-injection classifier unavailable "
+        f"({reported}), continuing without blocking; {remaining}. "
+        "Not repeated until the plugin reloads"
+    )
+
+
 def detect_prompt_injection_with_classifier(
     text: str, settings: IctSiteRagGuardsSettings
 ) -> dict[str, str | float] | None:
@@ -341,10 +410,7 @@ def detect_prompt_injection_with_classifier(
             token=token,
         )
     except Exception as error:
-        log.warning(
-            "[ict-site-rag-guards] prompt-injection classifier unavailable "
-            f"({error}), continuing without blocking"
-        )
+        announce_classifier_failure(error, settings)
         return None
 
     elapsed_ms = (time.perf_counter() - started) * 1000
@@ -425,6 +491,7 @@ def guard_input_message(fast_reply, cat):
         # magnitude above that and stays readable either way.
         log.debug(
             f"[ict-site-rag-guards] input allowed, "
+            f"stage='{STAGE_INPUT}', "
             f"checks={'+'.join(enabled_check_names(settings)) or 'none'}, "
             f"latency_ms={elapsed_ms:.2f}"
         )
@@ -434,40 +501,17 @@ def guard_input_message(fast_reply, cat):
     if reply is None:
         return fast_reply
 
-    # Recorded even though this hook answers on its own: it is the trace of why
-    # the turn was refused, for the logs and for the future telemetry module.
+    # This hook answers on its own, so nothing in this plugin reads the verdict
+    # back. It is kept as the trace of why the turn was refused, for the future
+    # telemetry module and for anything else inspecting working memory: unlike a
+    # hook registration, an attribute claims no behaviour the plugin lacks.
     setattr(cat.working_memory, VERDICT_ATTRIBUTE, verdict)
 
     log.info(
         f"[ict-site-rag-guards] input blocked, "
+        f"stage='{stage_of(verdict)}', "
         f"category='{category_of(verdict)}', verdict='{verdict}'"
         f"{detail}, latency_ms={elapsed_ms:.2f}; "
         f"no retrieval, no generation, nothing stored in memory"
-    )
-    return {"output": reply}
-
-
-@hook("agent_fast_reply", priority=1)
-def dispatch_fast_reply(fast_reply, cat):
-    """Answer with a static reply when a guard set a verdict after the recall.
-
-    This is the dispatch point for checks that need the retrieved memories to
-    decide, the evidence gate of Fase 3 above all. Unlike `fast_reply`, a reply
-    returned here still goes through `before_cat_sends_message` and is recorded
-    in the conversation history.
-    """
-    verdict = getattr(cat.working_memory, VERDICT_ATTRIBUTE, None)
-
-    if verdict is None:
-        return fast_reply
-
-    reply = reply_for(verdict, load_settings(cat))
-    if reply is None:
-        return fast_reply
-
-    log.info(
-        f"[ict-site-rag-guards] static reply sent, "
-        f"category='{category_of(verdict)}', verdict='{verdict}', "
-        f"main agent skipped, zero generation tokens spent"
     )
     return {"output": reply}

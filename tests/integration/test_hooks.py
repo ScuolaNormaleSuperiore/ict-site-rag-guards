@@ -1,4 +1,4 @@
-"""Tests for the two hooks and for the configuration.
+"""Tests for the hook layer and for the configuration.
 
 These do not need a running Cat, an LLM or a vector database: a fake `cat`
 object exposing a working memory, and optionally a plugin registry, is enough.
@@ -14,9 +14,10 @@ the last non-None return wins, so this plugin must stay below the other plugins
 to have its reply delivered. A priority raised above 1 by mistake would silently
 hand over control to `Rate Limiter`, with no error anywhere.
 
-The verdict carrier: a verdict written by one hook and never read by the other
-produces no error at all. The chatbot keeps answering, simply without being
-guarded any more.
+The announcement of the active guards: on a message that passes, the plugin
+writes nothing at `INFO`, and that silence is indistinguishable from the plugin
+not running. Losing the announcement would make an unguarded instance look
+exactly like a guarded one.
 """
 
 import sys
@@ -40,11 +41,28 @@ guards = pytest.importorskip(
     reason="needs the Cheshire Cat core importable; run inside the container",
 )
 settings_module = pytest.importorskip("settings")
+classifier_module = pytest.importorskip("prompt_injection_classifier")
+
+
+@pytest.fixture(autouse=True)
+def reset_classifier_caches():
+    """The negative cache of failed models is module-level state.
+
+    These tests do not populate it directly — they stub `classify_prompt_injection`
+    — but `tests/unit/test_prompt_injection_classifier.py` does, and the whole
+    suite runs in one process. Without this, a failed model left behind there made
+    the shipped default look unavailable here, and two tests failed for a reason
+    that had nothing to do with what they assert.
+    """
+    classifier_module._CLASSIFIER_PIPELINES.clear()
+    classifier_module._FAILED_CLASSIFIER_MODELS.clear()
+    yield
+    classifier_module._CLASSIFIER_PIPELINES.clear()
+    classifier_module._FAILED_CLASSIFIER_MODELS.clear()
 
 # The @hook decorator replaces the function with a CatHook object, so the
 # callable under test is reached through `.function`.
 guard_input_message = guards.guard_input_message.function
-dispatch_fast_reply = guards.dispatch_fast_reply.function
 
 # The priority the Rate Limiter plugin gets from a bare @hook decorator.
 OTHER_PLUGIN_DEFAULT_PRIORITY = 1
@@ -81,16 +99,24 @@ class TestHookRegistration:
     def test_hooks_are_bound_to_the_core_hook_names(self):
         # The function names are ours; the names the core dispatches on are not.
         assert guards.guard_input_message.name == "fast_reply"
-        assert guards.dispatch_fast_reply.name == "agent_fast_reply"
 
     def test_input_guard_runs_after_the_other_plugins(self):
         # The whole independence from Rate Limiter rests on this comparison:
         # hooks are piped in descending priority and the last reply wins.
         assert guards.guard_input_message.priority < OTHER_PLUGIN_DEFAULT_PRIORITY
 
-    def test_dispatcher_overrides_the_core_plugin(self):
-        # Core plugin hooks have priority 0; this one must be higher to take over.
-        assert guards.dispatch_fast_reply.priority > 0
+    def test_the_plugin_registers_exactly_one_flow_hook(self):
+        # `agent_fast_reply` was registered for the Fase 3 evidence gate and
+        # removed with it: a hook that answers nothing claims a behaviour the
+        # plugin does not have. This fails if one is added back without a check
+        # that produces a verdict for it.
+        registered = {
+            value.name
+            for value in vars(guards).values()
+            if hasattr(value, "name") and hasattr(value, "priority")
+        }
+
+        assert registered == {"fast_reply"}
 
     def test_settings_model_is_registered_under_the_name_the_core_looks_up(self):
         # The core collects @plugin overrides into a dict keyed by function name
@@ -151,7 +177,8 @@ class TestInputGuard:
         send(cat, "a" * 5000)
 
         assert any(
-            f"category='{checks.CATEGORY_LIMITS}'" in line
+            f"stage='{checks.STAGE_INPUT}'" in line
+            and f"category='{checks.CATEGORY_LIMITS}'" in line
             and f"verdict='{checks.VERDICT_MESSAGE_LENGTH}'" in line
             for line in lines
         )
@@ -489,77 +516,24 @@ class TestPromptInjectionGuard:
         assert all("pattern-matching input" not in line for line in lines)
 
 
-class TestDispatchFastReply:
-    """The post-recall path, used by the evidence gate of Fase 3."""
+class TestVerdictTrace:
+    """The verdict recorded in working memory, now written and never read.
 
-    def test_returns_a_static_reply_when_a_verdict_is_set(self):
+    It was the carrier between `fast_reply` and the removed `agent_fast_reply`
+    hook. It stays as the trace the telemetry module will read instead of
+    parsing log lines, so the reset between turns still matters: a stale verdict
+    would describe the wrong message.
+    """
+
+    def test_the_verdict_is_recorded_on_a_block(self):
         cat = make_cat()
-        setattr(
-            cat.working_memory,
-            guards.VERDICT_ATTRIBUTE,
-            checks.VERDICT_MESSAGE_LENGTH,
-        )
+        send(cat, "a" * 5000)
+        assert verdict_of(cat) == checks.VERDICT_MESSAGE_LENGTH
 
-        result = dispatch_fast_reply({}, cat)
-
-        assert "output" in result
-        assert settings_module.DEFAULT_HELP_DESK_EMAIL in result["output"]
-
-    def test_lets_the_normal_flow_continue_when_no_verdict_is_set(self):
-        cat = make_cat()
-        setattr(cat.working_memory, guards.VERDICT_ATTRIBUTE, None)
-
-        assert "output" not in dispatch_fast_reply({}, cat)
-
-    def test_the_static_reply_is_logged_with_its_category(self, monkeypatch):
-        # The post-recall path needs the same two axes as the input one, or the
-        # Fase 3 evidence gate will be invisible to the same log queries.
-        cat = make_cat()
-        lines = []
-        setattr(
-            cat.working_memory,
-            guards.VERDICT_ATTRIBUTE,
-            checks.VERDICT_MESSAGE_LENGTH,
-        )
-        monkeypatch.setattr(guards.log, "info", lines.append)
-
-        dispatch_fast_reply({}, cat)
-
-        assert any(
-            f"category='{checks.CATEGORY_LIMITS}'" in line
-            and f"verdict='{checks.VERDICT_MESSAGE_LENGTH}'" in line
-            for line in lines
-        )
-
-    def test_an_unknown_verdict_is_logged_as_uncategorized(self, monkeypatch):
-        # `reply_for` returns None for an unknown verdict, so this hook falls
-        # back to the normal flow and the category is never reached — the
-        # taxonomy gap cannot break the turn. Asserted, not assumed.
-        cat = make_cat()
-        setattr(cat.working_memory, guards.VERDICT_ATTRIBUTE, "verdict_never_defined")
-
-        assert "output" not in dispatch_fast_reply({}, cat)
+    def test_an_unknown_verdict_stays_uncategorized_without_raising(self):
+        # A gap in the taxonomy must not be able to break a turn.
         assert checks.category_of("verdict_never_defined") == checks.UNCATEGORIZED
 
-    def test_lets_the_normal_flow_continue_when_the_attribute_is_absent(self):
-        # The usual case now: the input guard answers on its own, so nothing
-        # sets a verdict before the recall.
-        assert "output" not in dispatch_fast_reply({}, make_cat())
-
-    def test_falls_back_to_normal_flow_on_a_verdict_with_no_reply(self):
-        # Better an answer from the model than an empty message to the user.
-        cat = make_cat()
-        setattr(cat.working_memory, guards.VERDICT_ATTRIBUTE, "verdict_never_defined")
-
-        assert "output" not in dispatch_fast_reply({}, cat)
-
-    def test_keeps_a_reply_another_plugin_set_when_no_verdict_is_set(self):
-        # The mirror of the input guard case, and the reason this hook returns
-        # what it received instead of an empty dict: a reply already decided by
-        # another plugin, or by the core plugin, must survive this hook.
-        foreign = {"output": "You have sent too many messages."}
-
-        assert dispatch_fast_reply(foreign, make_cat()) == foreign
 
 
 class TestConfiguration:
@@ -786,6 +760,114 @@ class TestGuardAnnouncement:
         assert uncovered == ()
 
 
+class TestClassifierUnavailable:
+    """A fail-open classifier must be reported once, not once per message.
+
+    The failure state cannot change until the plugin reloads, so a line per turn
+    buries the log exactly when a configuration problem needs diagnosing — and the
+    shipped default is a gated model with no token, so this is the common case,
+    not the exotic one.
+    """
+
+    @pytest.fixture(autouse=True)
+    def forget_previous_announcements(self):
+        guards._ANNOUNCED_CLASSIFIER_FAILURE = None
+        guards._ANNOUNCED_GUARD_SUMMARY = None
+        yield
+        guards._ANNOUNCED_CLASSIFIER_FAILURE = None
+        guards._ANNOUNCED_GUARD_SUMMARY = None
+
+    def broken_classifier(self, monkeypatch):
+        def explode(*args, **kwargs):
+            raise OSError("401 Client Error: gated repo")
+
+        monkeypatch.setattr(guards, "classify_prompt_injection", explode)
+
+    def test_the_failure_is_reported_once_not_per_message(self, monkeypatch):
+        cat = make_cat()
+        warnings = []
+        self.broken_classifier(monkeypatch)
+        monkeypatch.setattr(guards.log, "warning", warnings.append)
+
+        for _ in range(5):
+            send(cat, "Come attivo la VPN?")
+
+        unavailable = [line for line in warnings if "classifier unavailable" in line]
+        assert len(unavailable) == 1
+
+    def test_the_message_still_passes_every_time(self, monkeypatch):
+        # Fail-open is the point: five turns, five messages through.
+        cat = make_cat()
+        self.broken_classifier(monkeypatch)
+
+        for _ in range(5):
+            assert "output" not in send(cat, "Come attivo la VPN?")
+
+    def test_the_warning_says_what_still_covers_the_turn(self, monkeypatch):
+        cat = make_cat()
+        warnings = []
+        self.broken_classifier(monkeypatch)
+        monkeypatch.setattr(guards.log, "warning", warnings.append)
+
+        send(cat, "Come attivo la VPN?")
+
+        line = next(line for line in warnings if "classifier unavailable" in line)
+        assert "built-in patterns only" in line
+
+    def test_with_the_patterns_off_too_the_category_is_declared_uncovered(
+        self, monkeypatch
+    ):
+        # The announcement of the active guards was built from the settings, so it
+        # claimed a classifier that does not run. This is then the only line
+        # saying the security category covers nothing at all.
+        cat = make_cat({"detect_prompt_injection_custom": False})
+        warnings = []
+        self.broken_classifier(monkeypatch)
+        monkeypatch.setattr(guards.log, "warning", warnings.append)
+
+        send(cat, "Come attivo la VPN?")
+
+        assert any(
+            f"no guard covers: {checks.CATEGORY_SECURITY}" in line
+            for line in warnings
+        )
+
+    def test_a_different_failure_is_reported_again(self, monkeypatch):
+        cat = make_cat()
+        warnings = []
+        monkeypatch.setattr(guards.log, "warning", warnings.append)
+
+        errors = iter(["401 gated repo", "401 gated repo", "connection timed out"])
+
+        def explode(*args, **kwargs):
+            raise OSError(next(errors))
+
+        monkeypatch.setattr(guards, "classify_prompt_injection", explode)
+
+        for _ in range(3):
+            send(cat, "Come attivo la VPN?")
+
+        unavailable = [line for line in warnings if "classifier unavailable" in line]
+        assert len(unavailable) == 2
+
+    def test_an_unavailable_classifier_is_not_listed_among_the_checks(
+        self, monkeypatch
+    ):
+        # The DEBUG line is where per-turn coverage is recorded, so it must not
+        # claim a check that cannot run.
+        settings = settings_module.IctSiteRagGuardsSettings()
+        model = settings.prompt_injection_classifier_model.value
+
+        assert "injection_classifier" in guards.enabled_check_names(settings)
+
+        monkeypatch.setattr(
+            guards, "classifier_load_error", lambda name: "401 gated repo"
+        )
+
+        assert "injection_classifier" not in guards.enabled_check_names(settings)
+        assert model  # the name the lookup is keyed on
+
+
 class TestAllowedPathLogging:
     def test_a_passing_message_is_logged_at_debug_not_info(self, monkeypatch):
         cat = make_cat()
@@ -801,6 +883,7 @@ class TestAllowedPathLogging:
         send(cat, "How do I activate the VPN?")
 
         assert any("input allowed" in line for line in debugs)
+        assert any(f"stage='{checks.STAGE_INPUT}'" in line for line in debugs)
         assert not [line for line in infos if "input allowed" in line]
 
     def test_the_allowed_line_names_the_checks_that_covered_the_turn(
@@ -818,6 +901,7 @@ class TestAllowedPathLogging:
         send(cat, "How do I activate the VPN?")
 
         line = next(line for line in debugs if "input allowed" in line)
+        assert f"stage='{checks.STAGE_INPUT}'" in line
         assert "checks=length+injection_patterns+personal_data" in line
         assert "injection_classifier" in line
         assert "latency_ms=" in line

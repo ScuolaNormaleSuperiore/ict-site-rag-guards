@@ -30,7 +30,9 @@ Local interpreter, `tests/unit` only:
 python -m pip install pytest phonenumberslite
 ```
 
-`phonenumberslite` is there because `checks.py` imports it: the personal-data guard validates phone numbers against a numbering plan rather than matching a shape. It is the plugin's only runtime dependency, declared in `requirements.txt`, and the core installs it on activation — but a local run needs it locally too. Without it `tests/unit` fails at import, loudly, which is the wanted outcome: a guard whose behaviour depends on what happens to be installed is worse than one that refuses to start.
+`phonenumberslite` is there because `checks.py` imports it at module level: the personal-data guard validates phone numbers against a numbering plan rather than matching a shape. Without it `tests/unit` fails at import, loudly, which is the wanted outcome: a guard whose behaviour depends on what happens to be installed is worse than one that refuses to start.
+
+It is not the plugin's only runtime dependency — `requirements.txt` also declares `transformers` and `torch` for the prompt-injection classifier, and the core installs all three on activation. **They are deliberately absent from the command above**, and that is not an oversight: `prompt_injection_classifier.py` imports `transformers` lazily, inside `_get_pipeline()`, so nothing under `tests/unit` touches it — the classifier tests exercise the decision logic around a stubbed pipeline. Adding `torch` to a local install would cost gigabytes and buy nothing. If a future test needs the real pipeline it belongs in `tests/integration/`, where the container already has it.
 
 Container, whole suite:
 

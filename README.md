@@ -19,18 +19,25 @@ The plugin is work in progress.
 Currently implemented:
 
 - maximum input length check
+- personal-data guard for e-mail, codice fiscale, IBAN and phone numbers
 - prompt injection guard with a built-in detector plus an optional local classifier
 - configurable Help Desk email
-- configurable fallback message for over-long requests
+- configurable static replies for over-long requests, personal data and prompt injection
 
 Planned next steps include additional input checks, evidence sufficiency gating, prompt policy, output checks, and telemetry.
+
+The naming of guards is documented in [DOC/GuardTaxonomy.md](DOC/GuardTaxonomy.md). The plugin keeps three axes separate:
+
+- `stage`: where the control acts
+- `category`: what kind of risk it addresses
+- `verdict`: which specific control fired
 
 ## Requirements
 
 - Cheshire Cat AI `1.9.2` on the `1.x` line
 - A website chatbot integration that sends user messages to Cheshire Cat AI
 
-The plugin is self-contained: it requires no companion plugin, and every third-party dependency it needs is declared in its own `requirements.txt`, which Cheshire Cat AI installs on activation. It currently declares one, `phonenumberslite`, used to validate phone numbers against a numbering plan instead of matching them by shape.
+The plugin is self-contained: it requires no companion plugin, and every third-party dependency it needs is declared in its own `requirements.txt`, which Cheshire Cat AI installs on activation. It currently declares `phonenumberslite` for phone-number validation and `transformers` plus `torch` for the optional local prompt-injection classifier.
 
 Sharing an installation with other plugins is supported: when one of its own checks does not trigger, a reply another plugin has already produced is passed through untouched.
 
@@ -113,21 +120,31 @@ stopped it, so a refusal can be told apart from a normal answer and from another
 plugin's block:
 
 ```
-[ict-site-rag-guards] input blocked, category='privacy', verdict='personal_data', detected=email+phone (mobile), latency_ms=0.14; no retrieval, no generation, nothing stored in memory
+[ict-site-rag-guards] input blocked, stage='input', category='privacy', verdict='personal_data', detected=email+phone (mobile), latency_ms=0.14; no retrieval, no generation, nothing stored in memory
 ```
 
-`category` is the guard family — `limits`, `privacy`, `security` — and is what
-makes refusals countable per family. `verdict` is the control that tripped, and
-the fields after it describe the violation: the length against the limit, which
-detectors matched, or which injection pattern and classifier score fired.
+`stage`, `category`, and `verdict` are three separate fields by design:
 
-Messages that pass write nothing at `INFO`. Set `CCAT_LOG_LEVEL=DEBUG` to get
-one line per allowed message, which is the level to use when diagnosing a
-specific request:
+- `stage` says where the guard acted, currently `input`
+- `category` says the guard family — `limits`, `privacy`, `security`
+- `verdict` says the specific control that tripped
+
+The fields after them describe the violation: the length against the limit,
+which detectors matched, or which injection pattern and classifier score fired.
+
+A message that passes writes no *verdict* line: the guards stay silent when they
+find nothing. Set `CCAT_LOG_LEVEL=DEBUG` to get one line per allowed message,
+which is the level to use when diagnosing a specific request:
 
 ```
-[ict-site-rag-guards] input allowed, checks=length+injection_patterns+personal_data+injection_classifier, latency_ms=0.03
+[ict-site-rag-guards] input allowed, stage='input', checks=length+injection_patterns+personal_data+injection_classifier, latency_ms=0.03
 ```
+
+One exception at `INFO`, while the prompt-injection classifier is being
+evaluated: it reports reusing its in-memory pipeline, so with the classifier
+enabled a clean message does produce one line. Disable the classifier, or wait
+for that line to be demoted to `DEBUG`, if a silent `INFO` log matters more than
+observing model reuse.
 
 The refused message itself is never logged, on any path. That is deliberate: on
 the privacy guard it would defeat the check it is reporting. One consequence is

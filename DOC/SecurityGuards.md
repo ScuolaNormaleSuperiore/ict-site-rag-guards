@@ -127,6 +127,41 @@ If model loading, dependency import, or inference fails:
 
 This keeps the chatbot available even when the classifier runtime is not.
 
+#### A failed model is not retried
+
+When a model fails to load, the failure is remembered for the lifetime of the
+plugin and the load is never attempted again. This is about cost, not tidiness.
+
+Without it, every message retries the load, and `transformers` re-resolves the
+repository on the Hub each time — so the shipped default, a gated Meta model with
+no token, would cost a **network round trip inside `fast_reply`**, the hook that
+runs before retrieval, before generation, before anything. The turn's latency
+would depend on Hugging Face's response time, and on an unreachable Hub, on the
+timeout. Measured on three clean messages in that configuration, the failure path
+went from nine log lines to three, all of them on the first message.
+
+Retrying could not help anyway: the token comes from the settings or from
+`HF_TOKEN`, and neither changes without the plugin reloading — which is also what
+clears both the failure and the successful pipelines.
+
+Two consequences worth knowing:
+
+- **Adding a token or approving model access requires a restart** of the Cheshire
+  Cat container to take effect. Selecting a *different* model from the admin panel
+  does not: the cache is per model, so switching to the public
+  `deepset/deberta-v3-base-injection` works immediately.
+- **The failure is reported once, not once per message.** The state cannot change
+  until the plugin reloads, so repeating it every turn would bury the log exactly
+  when a configuration problem needs diagnosing. The single warning names what
+  still covers the turn — the built-in patterns — or states that the `security`
+  category covers nothing at all when those are disabled too. That matters because
+  the `guards active` announcement is built from the settings, so it claims a
+  classifier that turns out not to run.
+
+While a model is unavailable, the `DEBUG` line of an allowed message stops listing
+`injection_classifier` among the checks that covered the turn. A check that cannot
+run must not appear as coverage.
+
 ### Dependency model
 
 The classifier introduces explicit runtime dependencies declared in
@@ -147,9 +182,11 @@ model and threshold in use; with both mechanisms off it becomes a `WARNING`
 naming `security` as uncovered. This matters because a disabled guard is
 otherwise indistinguishable, in the log, from a guard that finds nothing.
 
-A message that passes writes one line at `DEBUG` only, listing the checks that
-covered the turn — `injection_patterns`, `injection_classifier` — and the
-latency. At the default `INFO` level a clean conversation stays silent.
+A message that passes writes no verdict line. At `DEBUG` it writes one line
+listing the checks that covered the turn — `injection_patterns`,
+`injection_classifier` — and the latency. At the default `INFO` level the guards
+themselves stay silent; the pipeline-reuse line described below is the one
+exception, and it is deliberate for v1.
 
 When a block happens, the logs identify at least:
 
@@ -170,10 +207,12 @@ During model loading, the runtime also logs, at `INFO`:
 - when the plugin starts loading a classifier model into memory
 - when model loading succeeds
 - when model loading fails, as a warning
+- when a classifier pipeline is found already cached in memory
 
-A pipeline found already cached in memory is logged at `DEBUG`, not `INFO`: it
-happens on every message that reaches the classifier, and at `INFO` it buries
-the lines that record an actual decision.
+A pipeline found already cached in memory is currently logged at `INFO` too.
+That is acceptable for v1 because it makes classifier reuse visible while the
+feature is being evaluated, but if it proves too noisy under real traffic it
+should be demoted to `DEBUG` in a later cleanup.
 
 Those messages are intentionally phrased in terms of the plugin's own state.
 With a plain `transformers.pipeline(...)` call, the plugin can reliably know

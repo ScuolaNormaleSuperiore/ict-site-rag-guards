@@ -47,8 +47,16 @@ ALL_VERDICTS = (
     VERDICT_PROMPT_INJECTION,
 )
 
+# Where a guard acts in the pipeline. Only `input` is implemented today, but
+# the taxonomy is explicit already so output and retrieval checks can reuse the
+# same log and telemetry shape instead of inventing a second one later.
+STAGE_INPUT = "input"
+STAGE_OUTPUT = "output"
+STAGE_RETRIEVAL = "retrieval"
+STAGE_SESSION = "session"
+
 # Why a request was refused, as opposed to which control refused it. Three axes
-# coexist here and each answers one question: the module says *where* a guard
+# coexist here and each answers one question: the stage says *where* a guard
 # runs, the verdict says *what* tripped, the category says *why*. Keeping them
 # separate is what makes "how many privacy refusals this week" answerable from
 # the logs without parsing verdict names, while leaving each control free to
@@ -56,6 +64,12 @@ ALL_VERDICTS = (
 CATEGORY_LIMITS = "limits"
 CATEGORY_PRIVACY = "privacy"
 CATEGORY_SECURITY = "security"
+
+STAGE_BY_VERDICT = {
+    VERDICT_MESSAGE_LENGTH: STAGE_INPUT,
+    VERDICT_PERSONAL_DATA: STAGE_INPUT,
+    VERDICT_PROMPT_INJECTION: STAGE_INPUT,
+}
 
 # Every verdict has one, including those set outside this module: the classifier
 # path in the hooks today, the evidence gate and the output checks later. A test
@@ -71,6 +85,7 @@ CATEGORY_BY_VERDICT = {
 # taxonomy has no effect on the user, so it must not be able to take down the
 # hook that runs before everything else. The test is what prevents it.
 UNCATEGORIZED = "uncategorized"
+UNKNOWN_STAGE = "unknown"
 
 # Maximum accepted length of a user message, in characters. Starting value:
 # high enough not to hinder an articulated question, low enough to stop a
@@ -207,6 +222,11 @@ def extract_text(user_message: Any) -> str:
 def category_of(verdict: str) -> str:
     """Return the family a verdict belongs to, for the log and the telemetry."""
     return CATEGORY_BY_VERDICT.get(verdict, UNCATEGORIZED)
+
+
+def stage_of(verdict: str) -> str:
+    """Return where in the pipeline a verdict was produced."""
+    return STAGE_BY_VERDICT.get(verdict, UNKNOWN_STAGE)
 
 
 def check_length(

@@ -29,7 +29,10 @@ from checks import (  # noqa: E402
     CATEGORY_PRIVACY,
     CATEGORY_SECURITY,
     DEFAULT_MAX_MESSAGE_CHARS,
+    STAGE_BY_VERDICT,
+    STAGE_INPUT,
     UNCATEGORIZED,
+    UNKNOWN_STAGE,
     VERDICT_MESSAGE_LENGTH,
     VERDICT_PERSONAL_DATA,
     VERDICT_PROMPT_INJECTION,
@@ -42,6 +45,7 @@ from checks import (  # noqa: E402
     matched_prompt_injection_pattern,
     phone_number_types,
     run_input_checks,
+    stage_of,
 )
 
 HELP_DESK = "helpdesk@example.org"
@@ -469,6 +473,14 @@ class TestVerdictsAndCategories:
         # log reporting a category for something nothing can produce.
         assert set(CATEGORY_BY_VERDICT) <= set(ALL_VERDICTS)
 
+    def test_every_verdict_has_a_stage(self):
+        unstaged = [verdict for verdict in ALL_VERDICTS if verdict not in STAGE_BY_VERDICT]
+
+        assert not unstaged, f"verdicts with no stage: {unstaged}"
+
+    def test_no_stage_is_declared_for_a_verdict_that_does_not_exist(self):
+        assert set(STAGE_BY_VERDICT) <= set(ALL_VERDICTS)
+
     @pytest.mark.parametrize(
         "verdict, expected",
         [
@@ -484,6 +496,13 @@ class TestVerdictsAndCategories:
         # A gap in the taxonomy has no effect on the user, so it must not be
         # able to raise inside the hook that runs before everything else.
         assert category_of("verdict_never_defined") == UNCATEGORIZED
+
+    @pytest.mark.parametrize("verdict", ALL_VERDICTS)
+    def test_stage_of_returns_input_for_every_current_verdict(self, verdict):
+        assert stage_of(verdict) == STAGE_INPUT
+
+    def test_an_unknown_verdict_has_an_unknown_stage_instead_of_raising(self):
+        assert stage_of("verdict_never_defined") == UNKNOWN_STAGE
 
     def test_the_length_verdict_is_not_the_name_of_its_settings_field(self):
         # They used to be the same string, `message_too_long`, which invited

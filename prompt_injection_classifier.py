@@ -26,6 +26,30 @@ PROMPT_INJECTION_CLASSIFIER_LABELS = {
 
 _CLASSIFIER_PIPELINES: dict[str, Any] = {}
 
+# Models whose load already failed, with the reason. This is a negative cache and
+# it exists for cost, not for tidiness: without it every message retries the
+# load, and `transformers` re-resolves the repository on the Hub each time, so
+# the shipped default — a gated Meta model with no token — costs a network round
+# trip inside `fast_reply`, the hook that runs before everything else.
+#
+# Retrying cannot help anyway: the token comes from the settings or from the
+# environment, and neither changes without the plugin reloading, which clears
+# this dict along with the successful pipelines above.
+_FAILED_CLASSIFIER_MODELS: dict[str, str] = {}
+
+
+class ClassifierUnavailable(RuntimeError):
+    """A model that already failed to load and is not being retried."""
+
+
+def classifier_load_error(model_name: str) -> str | None:
+    """Why this model is unavailable, or None if it has not failed.
+
+    Lets callers keep their own reporting honest — a check that cannot run must
+    not be listed among the ones covering a turn.
+    """
+    return _FAILED_CLASSIFIER_MODELS.get(model_name)
+
 
 def supported_prompt_injection_classifier_models() -> tuple[str, ...]:
     return tuple(PROMPT_INJECTION_CLASSIFIER_LABELS)
@@ -34,15 +58,23 @@ def supported_prompt_injection_classifier_models() -> tuple[str, ...]:
 def _get_pipeline(model_name: str, token: str | None = None):
     pipeline = _CLASSIFIER_PIPELINES.get(model_name)
     if pipeline is not None:
-        # DEBUG, not INFO: this fires on every message that reaches the
-        # classifier, so at INFO it buries the lines that record an actual
-        # decision. The load and the failure below stay at INFO and WARNING,
-        # because those happen once and matter.
-        runtime_log.debug(
+        # INFO for v1, deliberately, even though this fires on every message
+        # that reaches the classifier: while the feature is being evaluated,
+        # seeing the pipeline being reused is worth the volume. It is the one
+        # line this plugin writes per message at the default level — reconsider
+        # demoting it to DEBUG once real traffic shows whether it is noise.
+        # See DOC/SecurityGuards.md, section *Logging and measurement*.
+        runtime_log.info(
             "[ict-site-rag-guards] prompt-injection classifier pipeline cache hit "
             f"for model {model_name}"
         )
         return pipeline
+
+    previous_error = _FAILED_CLASSIFIER_MODELS.get(model_name)
+    if previous_error is not None:
+        # Nothing is logged here: the failure was reported when it happened, and
+        # repeating it once per message is the flood this cache removes.
+        raise ClassifierUnavailable(previous_error)
 
     from transformers import pipeline as transformers_pipeline
 
@@ -58,9 +90,11 @@ def _get_pipeline(model_name: str, token: str | None = None):
             token=token,
         )
     except Exception as error:
+        _FAILED_CLASSIFIER_MODELS[model_name] = str(error)
         runtime_log.warning(
             "[ict-site-rag-guards] failed to load prompt-injection classifier "
-            f"model {model_name}: {error}"
+            f"model {model_name}: {error}; it will not be retried until the "
+            "plugin reloads"
         )
         raise
 
