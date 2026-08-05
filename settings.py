@@ -105,7 +105,7 @@ class IctSiteRagGuardsSettings(BaseModel):
     max_message_chars: int = Field(
         default=DEFAULT_MAX_MESSAGE_CHARS,
         ge=0,
-        title="Max length guard: Maximum message length (characters)",
+        title="Limits guard: maximum message length (characters)",
         description=(
             "Messages longer than this are answered with a static reply, without "
             "reaching the language model, so they cost no generation tokens. "
@@ -120,7 +120,7 @@ class IctSiteRagGuardsSettings(BaseModel):
 
     message_too_long: str = Field(
         default=DEFAULT_MESSAGE_TOO_LONG,
-        title="Reply: message too long",
+        title="Limits guard: reply — message too long",
         description=(
             "Sent when a message exceeds the maximum length. "
             "Use {help_desk_email} as a placeholder for the address above."
@@ -171,7 +171,7 @@ class IctSiteRagGuardsSettings(BaseModel):
 
     phone_region: str = Field(
         default=DEFAULT_PHONE_REGION,
-        title="Region for phone numbers written without a prefix",
+        title="Privacy guard: region for phone numbers written without a prefix",
         description=(
             "Two-letter country code, for example IT. A number is only valid "
             "relative to a numbering plan: the same digits are a landline in "
@@ -182,7 +182,7 @@ class IctSiteRagGuardsSettings(BaseModel):
 
     personal_data_detected: str = Field(
         default=DEFAULT_PERSONAL_DATA_DETECTED,
-        title="Reply: personal data detected",
+        title="Privacy guard: reply — personal data detected",
         description=(
             "Sent when a message is refused for containing personal data. "
             "Use {help_desk_email} as a placeholder for the address above. "
@@ -246,7 +246,7 @@ class IctSiteRagGuardsSettings(BaseModel):
 
     prompt_injection_detected: str = Field(
         default=DEFAULT_PROMPT_INJECTION_DETECTED,
-        title="Reply: prompt injection detected",
+        title="Security guard: reply — prompt injection detected",
         description=(
             "Sent when the prompt injection guard blocks a message, whether it "
             "was detected by the custom patterns or by the local classifier. "

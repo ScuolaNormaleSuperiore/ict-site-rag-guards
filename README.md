@@ -47,17 +47,24 @@ After activation, open:
 
 `Plugins -> ICT Site RAG Guards -> Settings`
 
-Available settings:
+Settings are named after the guard family they belong to, so related options
+read together in the form:
 
-- `Help Desk email`
-- `Maximum message length (characters)`
-- `Reply: message too long`
+- `Help Desk e-mail`
+- `Limits guard: maximum message length (characters)`
+- `Limits guard: reply — message too long`
+- `Privacy guard: block e-mail addresses`
+- `Privacy guard: block codice fiscale`
+- `Privacy guard: block IBAN`
+- `Privacy guard: block phone numbers`
+- `Privacy guard: region for phone numbers written without a prefix`
+- `Privacy guard: reply — personal data detected`
 - `Security guard: block explicit prompt injection patterns`
 - `Security guard: block prompt injection with local classifier`
 - `Security guard: prompt injection classifier model`
 - `Security guard: prompt injection classifier threshold`
 - `Security guard: Hugging Face token`
-- `Reply: prompt injection detected`
+- `Security guard: reply — prompt injection detected`
 
 The shipped default Help Desk address is a placeholder and should be replaced for real deployments.
 
@@ -77,8 +84,29 @@ The same early-stop path is also used by the prompt injection guard. It first
 applies a conservative built-in detector for explicit override or reveal
 attempts, then optionally runs a local classifier. When either one trips, the
 plugin returns a static reply before retrieval or generation. A detailed
-description of the guard lives in `DOC/SucurityGuards.md`, including when a
+description of the guard lives in `DOC/SecurityGuards.md`, including when a
 Hugging Face token is needed for gated classifier models.
+
+### What a refusal records
+
+Every refusal writes one `INFO` line naming the guard that stopped the request,
+so a block can be told apart from a normal answer, and from another plugin's
+block, without guessing:
+
+```
+[ict-site-rag-guards] input blocked, category='privacy', verdict='personal_data', detected=email+phone (mobile); no retrieval, no generation, nothing stored in memory
+```
+
+`category` is the guard family — `limits`, `privacy`, `security` — and is what
+makes refusals countable per family. `verdict` is the control that tripped, and
+the fields after it describe the violation: the length against the limit, which
+detectors matched, or which injection pattern and classifier score fired.
+
+The refused message itself is never logged, on any path. That is deliberate: on
+the privacy guard it would defeat the check it is reporting. One consequence is
+worth knowing, because no plugin can change it — Cheshire Cat itself logs every
+incoming message before any plugin runs, so log retention remains a
+data-protection question independent of this plugin.
 
 ## Development
 

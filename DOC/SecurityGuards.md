@@ -63,7 +63,7 @@ The guard adds these admin settings:
 - `Security guard: prompt injection classifier model`
 - `Security guard: prompt injection classifier threshold`
 - `Security guard: Hugging Face token`
-- `Reply: prompt injection detected`
+- `Security guard: reply — prompt injection detected`
 
 The threshold is the minimum confidence required for the classifier to block a
 message. Example:
@@ -142,17 +142,27 @@ latency without logging the original message text.
 
 When a block happens, the logs identify at least:
 
+- the guard category, `security`, and the verdict, `prompt_injection`
 - whether the detector was `custom` or `classifier`
+- which of the built-in patterns matched, by name, if the custom detector blocked
 - the selected model, if the classifier blocked
 - the classifier score and threshold, if applicable
 - the classifier latency in milliseconds, when measured
 
-During model loading, the runtime also logs:
+The pattern name is what makes a false positive diagnosable: since the refused
+text is deliberately never logged, without it the line holds nothing to reason
+from. The names are therefore part of the log contract — renaming one is a
+breaking change for whoever greps these lines.
 
-- when a classifier pipeline is requested and already found in memory cache
+During model loading, the runtime also logs, at `INFO`:
+
 - when the plugin starts loading a classifier model into memory
 - when model loading succeeds
-- when model loading fails
+- when model loading fails, as a warning
+
+A pipeline found already cached in memory is logged at `DEBUG`, not `INFO`: it
+happens on every message that reaches the classifier, and at `INFO` it buries
+the lines that record an actual decision.
 
 Those messages are intentionally phrased in terms of the plugin's own state.
 With a plain `transformers.pipeline(...)` call, the plugin can reliably know

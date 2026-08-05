@@ -44,11 +44,13 @@ from pydantic import ValidationError
 # lets the tests import this module directly, with the plugin folder on the path.
 try:
     from .checks import (
-        VERDICT_MESSAGE_TOO_LONG,
+        VERDICT_MESSAGE_LENGTH,
         VERDICT_PERSONAL_DATA,
         VERDICT_PROMPT_INJECTION,
+        category_of,
         extract_text,
         matched_personal_data_kinds,
+        matched_prompt_injection_pattern,
         phone_number_types,
         run_input_checks,
     )
@@ -56,11 +58,13 @@ try:
     from .settings import IctSiteRagGuardsSettings
 except ImportError:  # pragma: no cover - depends on how the module is loaded
     from checks import (
-        VERDICT_MESSAGE_TOO_LONG,
+        VERDICT_MESSAGE_LENGTH,
         VERDICT_PERSONAL_DATA,
         VERDICT_PROMPT_INJECTION,
+        category_of,
         extract_text,
         matched_personal_data_kinds,
+        matched_prompt_injection_pattern,
         phone_number_types,
         run_input_checks,
     )
@@ -80,8 +84,15 @@ INPUT_GUARD_PRIORITY = -1
 # Which settings field holds the reply text of each verdict. Adding a check
 # means adding an entry here and a field to the settings model; the tests fail
 # if the two get out of step.
+#
+# The keys are verdicts and the values are settings field names, and the two
+# namespaces are deliberately independent: a verdict may be renamed freely,
+# because it is never persisted, while renaming a field silently discards the
+# text an administrator edited in the admin panel. Two verdicts may also point
+# at the same field, which is what Fase 3 and Fase 5 need when they share one
+# insufficiency message.
 REPLY_SETTING_BY_VERDICT = {
-    VERDICT_MESSAGE_TOO_LONG: "message_too_long",
+    VERDICT_MESSAGE_LENGTH: "message_too_long",
     VERDICT_PERSONAL_DATA: "personal_data_detected",
     VERDICT_PROMPT_INJECTION: "prompt_injection_detected",
 }
@@ -189,7 +200,7 @@ def blocked_detail(
     would defeat the point of the check. Only the shape of the violation is
     recorded — how long the message was, or which detector fired.
     """
-    if verdict == VERDICT_MESSAGE_TOO_LONG:
+    if verdict == VERDICT_MESSAGE_LENGTH:
         return f", length={len(text)} chars (limit {settings.max_message_chars})"
 
     if verdict == VERDICT_PERSONAL_DATA:
@@ -213,7 +224,14 @@ def blocked_detail(
         return detail
 
     if verdict == VERDICT_PROMPT_INJECTION:
-        return ", detector=custom"
+        # Only the pattern detector reaches this function: the classifier path
+        # builds its own detail, because it has a score and a latency to report.
+        pattern = matched_prompt_injection_pattern(
+            text, settings.detect_prompt_injection_custom
+        )
+        if pattern is None:  # pragma: no cover - defensive, the check just fired
+            return ", detector=custom"
+        return f", detector=custom, pattern={pattern}"
 
     return ""
 
@@ -316,7 +334,8 @@ def guard_input_message(fast_reply, cat):
     setattr(cat.working_memory, VERDICT_ATTRIBUTE, verdict)
 
     log.info(
-        f"[ict-site-rag-guards] input blocked, verdict='{verdict}'"
+        f"[ict-site-rag-guards] input blocked, "
+        f"category='{category_of(verdict)}', verdict='{verdict}'"
         f"{detail}; "
         f"no retrieval, no generation, nothing stored in memory"
     )
@@ -342,7 +361,8 @@ def dispatch_fast_reply(fast_reply, cat):
         return fast_reply
 
     log.info(
-        f"[ict-site-rag-guards] static reply sent for verdict '{verdict}', "
+        f"[ict-site-rag-guards] static reply sent, "
+        f"category='{category_of(verdict)}', verdict='{verdict}', "
         f"main agent skipped, zero generation tokens spent"
     )
     return {"output": reply}

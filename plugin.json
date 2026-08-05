@@ -5,6 +5,6 @@
     "author_name": "Servizi Informativi SNS",
     "author_url": "https://ict.sns.it",
     "plugin_url": "https://github.com/ScuolaNormaleSuperiore/ict-site-rag-guards",
-    "tags": "guardrails, rag, evidence gate, privacy, ict, chatbot",
+    "tags": "guardrails, rag, safety, privacy, security, moderation, chatbot",
     "thumb": "https://raw.githubusercontent.com/ScuolaNormaleSuperiore/ict-site-rag-guards/main/logo.png"
 }

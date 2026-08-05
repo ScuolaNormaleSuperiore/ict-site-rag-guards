@@ -34,7 +34,11 @@ def supported_prompt_injection_classifier_models() -> tuple[str, ...]:
 def _get_pipeline(model_name: str, token: str | None = None):
     pipeline = _CLASSIFIER_PIPELINES.get(model_name)
     if pipeline is not None:
-        runtime_log.info(
+        # DEBUG, not INFO: this fires on every message that reaches the
+        # classifier, so at INFO it buries the lines that record an actual
+        # decision. The load and the failure below stay at INFO and WARNING,
+        # because those happen once and matter.
+        runtime_log.debug(
             "[ict-site-rag-guards] prompt-injection classifier pipeline cache hit "
             f"for model {model_name}"
         )

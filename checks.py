@@ -28,9 +28,49 @@ from phonenumbers import Leniency, PhoneNumberMatcher, PhoneNumberType
 
 # Verdict names, shared with the hooks module: a rename here cannot silently
 # break the link between a check and the reply it is supposed to trigger.
-VERDICT_MESSAGE_TOO_LONG = "message_too_long"
+#
+# A verdict names the control that tripped, not the family it belongs to, and
+# that is deliberate: the verdict is also the key of the reply sent to the user,
+# so one verdict per control is what lets a refusal say what to correct. A
+# generic verdict would force one vague text on every control of its family.
+# The family is the category below.
+VERDICT_MESSAGE_LENGTH = "message_length"
 VERDICT_PERSONAL_DATA = "personal_data"
 VERDICT_PROMPT_INJECTION = "prompt_injection"
+
+# The single source for which verdicts exist. Tests derive from this instead of
+# introspecting the module for a name prefix, which would keep passing on an
+# empty set the moment the naming convention changed.
+ALL_VERDICTS = (
+    VERDICT_MESSAGE_LENGTH,
+    VERDICT_PERSONAL_DATA,
+    VERDICT_PROMPT_INJECTION,
+)
+
+# Why a request was refused, as opposed to which control refused it. Three axes
+# coexist here and each answers one question: the module says *where* a guard
+# runs, the verdict says *what* tripped, the category says *why*. Keeping them
+# separate is what makes "how many privacy refusals this week" answerable from
+# the logs without parsing verdict names, while leaving each control free to
+# keep its own reply text.
+CATEGORY_LIMITS = "limits"
+CATEGORY_PRIVACY = "privacy"
+CATEGORY_SECURITY = "security"
+
+# Every verdict has one, including those set outside this module: the classifier
+# path in the hooks today, the evidence gate and the output checks later. A test
+# enforces it, because a verdict with no category does not fail anything — it
+# just disappears from the telemetry.
+CATEGORY_BY_VERDICT = {
+    VERDICT_MESSAGE_LENGTH: CATEGORY_LIMITS,
+    VERDICT_PERSONAL_DATA: CATEGORY_PRIVACY,
+    VERDICT_PROMPT_INJECTION: CATEGORY_SECURITY,
+}
+
+# What an unclassified verdict is reported as. Not an exception: a gap in the
+# taxonomy has no effect on the user, so it must not be able to take down the
+# hook that runs before everything else. The test is what prevents it.
+UNCATEGORIZED = "uncategorized"
 
 # Maximum accepted length of a user message, in characters. Starting value:
 # high enough not to hinder an articulated question, low enough to stop a
@@ -42,25 +82,50 @@ DEFAULT_PROMPT_INJECTION_CLASSIFIER_THRESHOLD = 0.85
 # The v1 custom detector is deliberately conservative: high-precision phrases
 # that directly try to alter the assistant's rules or reveal its hidden
 # instructions. The classifier covers the broader grey area.
+#
+# Each pattern carries a name, and the name reaches the log. Six anonymous
+# regexes produce one indistinguishable log line, which is exactly what makes a
+# false positive impossible to diagnose: the refused text is deliberately not
+# logged, so without the pattern name there is nothing left to reason from.
+# Names are part of the log contract — treat a rename as a breaking change for
+# whoever greps these lines.
 _PROMPT_INJECTION_PATTERNS = (
-    re.compile(
-        r"\b(?:ignore|disregard|forget|override|bypass)\b.{0,40}\b"
-        r"(?:instructions|rules|guardrails|safety|system prompt|prompt)\b"
+    (
+        "override_instructions_en",
+        re.compile(
+            r"\b(?:ignore|disregard|forget|override|bypass)\b.{0,40}\b"
+            r"(?:instructions|rules|guardrails|safety|system prompt|prompt)\b"
+        ),
     ),
-    re.compile(
-        r"\b(?:reveal|show|display|print|tell me)\b.{0,40}\b"
-        r"(?:system prompt|hidden prompt|developer instructions|internal instructions)\b"
+    (
+        "reveal_prompt_en",
+        re.compile(
+            r"\b(?:reveal|show|display|print|tell me)\b.{0,40}\b"
+            r"(?:system prompt|hidden prompt|developer instructions|internal instructions)\b"
+        ),
     ),
-    re.compile(r"\b(?:developer mode|jailbreak|do anything now)\b"),
-    re.compile(
-        r"\b(?:ignora|disattiva|scavalca|aggira|sovrascrivi)\b.{0,40}\b"
-        r"(?:istruzioni|regole|guardrail|vincoli|prompt di sistema|prompt)\b"
+    (
+        "jailbreak_mode_en",
+        re.compile(r"\b(?:developer mode|jailbreak|do anything now)\b"),
     ),
-    re.compile(
-        r"\b(?:rivela|mostra|stampa|dimmi)\b.{0,40}\b"
-        r"(?:prompt di sistema|prompt nascosto|istruzioni sviluppatore|istruzioni interne)\b"
+    (
+        "override_instructions_it",
+        re.compile(
+            r"\b(?:ignora|disattiva|scavalca|aggira|sovrascrivi)\b.{0,40}\b"
+            r"(?:istruzioni|regole|guardrail|vincoli|prompt di sistema|prompt)\b"
+        ),
     ),
-    re.compile(r"\b(?:modalita sviluppatore|modalità sviluppatore)\b"),
+    (
+        "reveal_prompt_it",
+        re.compile(
+            r"\b(?:rivela|mostra|stampa|dimmi)\b.{0,40}\b"
+            r"(?:prompt di sistema|prompt nascosto|istruzioni sviluppatore|istruzioni interne)\b"
+        ),
+    ),
+    (
+        "jailbreak_mode_it",
+        re.compile(r"\b(?:modalita sviluppatore|modalità sviluppatore)\b"),
+    ),
 )
 
 # --- Personal data patterns -------------------------------------------------
@@ -139,6 +204,11 @@ def extract_text(user_message: Any) -> str:
     return getattr(user_message, "text", "") or ""
 
 
+def category_of(verdict: str) -> str:
+    """Return the family a verdict belongs to, for the log and the telemetry."""
+    return CATEGORY_BY_VERDICT.get(verdict, UNCATEGORIZED)
+
+
 def check_length(
     text: str, max_chars: int = DEFAULT_MAX_MESSAGE_CHARS
 ) -> str | None:
@@ -150,7 +220,7 @@ def check_length(
     if max_chars <= 0:
         return None
     if len(text) > max_chars:
-        return VERDICT_MESSAGE_TOO_LONG
+        return VERDICT_MESSAGE_LENGTH
     return None
 
 
@@ -163,8 +233,16 @@ def _normalize_for_prompt_injection(text: str) -> str:
     return " ".join(text.casefold().split())
 
 
-def check_prompt_injection(text: str, enabled: bool = True) -> str | None:
-    """Stop explicit prompt-injection attempts with a conservative pattern set."""
+def matched_prompt_injection_pattern(
+    text: str, enabled: bool = True
+) -> str | None:
+    """Return the name of the first pattern that matches, for logging.
+
+    The counterpart of `matched_personal_data_kinds`, and there for the same
+    reason: the verdict tells the user's reply apart, the name tells whoever
+    reads the log which of the six phrases fired. Only the name is returned,
+    never the matched text, which would put the refused message in the log.
+    """
     if not enabled:
         return None
 
@@ -172,10 +250,17 @@ def check_prompt_injection(text: str, enabled: bool = True) -> str | None:
     if not normalized:
         return None
 
-    for pattern in _PROMPT_INJECTION_PATTERNS:
+    for name, pattern in _PROMPT_INJECTION_PATTERNS:
         if pattern.search(normalized):
-            return VERDICT_PROMPT_INJECTION
+            return name
 
+    return None
+
+
+def check_prompt_injection(text: str, enabled: bool = True) -> str | None:
+    """Stop explicit prompt-injection attempts with a conservative pattern set."""
+    if matched_prompt_injection_pattern(text, enabled) is not None:
+        return VERDICT_PROMPT_INJECTION
     return None
 
 
