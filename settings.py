@@ -8,14 +8,32 @@ from `checks.py`, which stays the single source of truth for the logic and keeps
 being testable without Cheshire Cat.
 """
 
+from enum import Enum
+
 from cat.mad_hatter.decorators import plugin
 from pydantic import BaseModel, Field, field_validator
 
 # See ict_site_rag_guards.py for why both import forms are needed.
 try:
-    from .checks import DEFAULT_MAX_MESSAGE_CHARS, DEFAULT_PHONE_REGION
+    from .checks import (
+        DEFAULT_MAX_MESSAGE_CHARS,
+        DEFAULT_PHONE_REGION,
+        DEFAULT_PROMPT_INJECTION_CLASSIFIER_THRESHOLD,
+    )
+    from .prompt_injection_classifier import (
+        DEFAULT_PROMPT_INJECTION_CLASSIFIER_MODEL,
+        supported_prompt_injection_classifier_models,
+    )
 except ImportError:  # pragma: no cover - depends on how the module is loaded
-    from checks import DEFAULT_MAX_MESSAGE_CHARS, DEFAULT_PHONE_REGION
+    from checks import (
+        DEFAULT_MAX_MESSAGE_CHARS,
+        DEFAULT_PHONE_REGION,
+        DEFAULT_PROMPT_INJECTION_CLASSIFIER_THRESHOLD,
+    )
+    from prompt_injection_classifier import (
+        DEFAULT_PROMPT_INJECTION_CLASSIFIER_MODEL,
+        supported_prompt_injection_classifier_models,
+    )
 
 DEFAULT_HELP_DESK_EMAIL = "helpdesk@example.org"
 
@@ -53,6 +71,25 @@ DEFAULT_PERSONAL_DATA_DETECTED = (
     "If your case requires personal data, write to the ICT Help Desk: "
     "{help_desk_email}"
 )
+
+DEFAULT_PROMPT_INJECTION_DETECTED = (
+    "Non posso elaborare richieste che cercano di modificare le istruzioni o "
+    "di ottenere informazioni interne del chatbot. Riformula la domanda come "
+    "richiesta di supporto ICT sul servizio che ti interessa, senza chiedere "
+    "di ignorare regole o rivelare prompt interni. Se hai bisogno di "
+    "assistenza, scrivi all'Help Desk ICT: {help_desk_email}\n\n"
+    "I cannot process requests that try to alter the chatbot's instructions "
+    "or obtain its internal information. Please rephrase your question as an "
+    "ICT support request about the service you need, without asking to ignore "
+    "rules or reveal hidden prompts. If you need assistance, write to the ICT "
+    "Help Desk: {help_desk_email}"
+)
+
+
+class PromptInjectionClassifierModel(str, Enum):
+    LLAMA_PROMPT_GUARD_86M = "meta-llama/Llama-Prompt-Guard-2-86M"
+    LLAMA_PROMPT_GUARD_22M = "meta-llama/Llama-Prompt-Guard-2-22M"
+    DEBERTA_INJECTION = "deepset/deberta-v3-base-injection"
 
 
 class IctSiteRagGuardsSettings(BaseModel):
@@ -156,6 +193,68 @@ class IctSiteRagGuardsSettings(BaseModel):
         extra={"type": "TextArea"},
     )
 
+    detect_prompt_injection_custom: bool = Field(
+        default=True,
+        title="Security guard: block explicit prompt injection patterns",
+        description=(
+            "Refuses messages that explicitly try to override instructions, "
+            "bypass rules, or reveal hidden prompts, using a conservative "
+            "built-in bilingual pattern set."
+        ),
+    )
+
+    detect_prompt_injection_classifier: bool = Field(
+        default=True,
+        title="Security guard: block prompt injection with local classifier",
+        description=(
+            "Runs a local text-classification model after the custom detector. "
+            "If loading or inference fails, the message continues and the "
+            "plugin logs a warning."
+        ),
+    )
+
+    prompt_injection_classifier_model: PromptInjectionClassifierModel = Field(
+        default=PromptInjectionClassifierModel(DEFAULT_PROMPT_INJECTION_CLASSIFIER_MODEL),
+        title="Security guard: prompt injection classifier model",
+        description=(
+            "Local model used by the prompt injection classifier. The default "
+            "is preferred for Italian and English support messages."
+        ),
+    )
+
+    prompt_injection_classifier_threshold: float = Field(
+        default=DEFAULT_PROMPT_INJECTION_CLASSIFIER_THRESHOLD,
+        ge=0.0,
+        le=1.0,
+        title="Security guard: prompt injection classifier threshold",
+        description=(
+            "Minimum classifier confidence needed to block a message. Higher "
+            "values are more conservative and usually reduce false positives."
+        ),
+    )
+
+    huggingface_token: str = Field(
+        default="",
+        title="Security guard: Hugging Face token",
+        description=(
+            "Optional user access token for gated Hugging Face models. Needed "
+            "only for classifier models that require authenticated access, "
+            "such as the Meta Llama Prompt Guard models. If the HF_TOKEN "
+            "environment variable is set, it takes precedence over this field."
+        ),
+    )
+
+    prompt_injection_detected: str = Field(
+        default=DEFAULT_PROMPT_INJECTION_DETECTED,
+        title="Reply: prompt injection detected",
+        description=(
+            "Sent when the prompt injection guard blocks a message, whether it "
+            "was detected by the custom patterns or by the local classifier. "
+            "Use {help_desk_email} as a placeholder for the address above."
+        ),
+        extra={"type": "TextArea"},
+    )
+
     @field_validator("help_desk_email")
     @classmethod
     def _must_look_like_an_address(cls, value: str) -> str:
@@ -179,7 +278,22 @@ class IctSiteRagGuardsSettings(BaseModel):
             raise ValueError("must be a two-letter country code, for example IT")
         return value
 
-    @field_validator("message_too_long", "personal_data_detected")
+    @field_validator("prompt_injection_classifier_model", mode="before")
+    @classmethod
+    def _must_be_a_supported_classifier_model(
+        cls, value: str | PromptInjectionClassifierModel
+    ) -> str | PromptInjectionClassifierModel:
+        raw_value = value.value if isinstance(value, PromptInjectionClassifierModel) else value
+        if raw_value not in supported_prompt_injection_classifier_models():
+            allowed = ", ".join(supported_prompt_injection_classifier_models())
+            raise ValueError(f"unsupported model; choose one of: {allowed}")
+        return value
+
+    @field_validator(
+        "message_too_long",
+        "personal_data_detected",
+        "prompt_injection_detected",
+    )
     @classmethod
     def _reply_must_not_be_empty(cls, value: str) -> str:
         # An empty reply would send the user a blank message, which is worse
@@ -188,6 +302,11 @@ class IctSiteRagGuardsSettings(BaseModel):
         if not value:
             raise ValueError("the reply text cannot be empty")
         return value
+
+    @field_validator("huggingface_token")
+    @classmethod
+    def _strip_huggingface_token(cls, value: str) -> str:
+        return value.strip()
 
 
 @plugin

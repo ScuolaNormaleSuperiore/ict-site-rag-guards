@@ -30,12 +30,38 @@ from phonenumbers import Leniency, PhoneNumberMatcher, PhoneNumberType
 # break the link between a check and the reply it is supposed to trigger.
 VERDICT_MESSAGE_TOO_LONG = "message_too_long"
 VERDICT_PERSONAL_DATA = "personal_data"
+VERDICT_PROMPT_INJECTION = "prompt_injection"
 
 # Maximum accepted length of a user message, in characters. Starting value:
 # high enough not to hinder an articulated question, low enough to stop a
 # pasted document. Kept below the Rate Limiter plugin's own `max_prompt_length`
 # so that this plugin, and not that one, answers an over-long message.
 DEFAULT_MAX_MESSAGE_CHARS = 1000
+DEFAULT_PROMPT_INJECTION_CLASSIFIER_THRESHOLD = 0.85
+
+# The v1 custom detector is deliberately conservative: high-precision phrases
+# that directly try to alter the assistant's rules or reveal its hidden
+# instructions. The classifier covers the broader grey area.
+_PROMPT_INJECTION_PATTERNS = (
+    re.compile(
+        r"\b(?:ignore|disregard|forget|override|bypass)\b.{0,40}\b"
+        r"(?:instructions|rules|guardrails|safety|system prompt|prompt)\b"
+    ),
+    re.compile(
+        r"\b(?:reveal|show|display|print|tell me)\b.{0,40}\b"
+        r"(?:system prompt|hidden prompt|developer instructions|internal instructions)\b"
+    ),
+    re.compile(r"\b(?:developer mode|jailbreak|do anything now)\b"),
+    re.compile(
+        r"\b(?:ignora|disattiva|scavalca|aggira|sovrascrivi)\b.{0,40}\b"
+        r"(?:istruzioni|regole|guardrail|vincoli|prompt di sistema|prompt)\b"
+    ),
+    re.compile(
+        r"\b(?:rivela|mostra|stampa|dimmi)\b.{0,40}\b"
+        r"(?:prompt di sistema|prompt nascosto|istruzioni sviluppatore|istruzioni interne)\b"
+    ),
+    re.compile(r"\b(?:modalita sviluppatore|modalità sviluppatore)\b"),
+)
 
 # --- Personal data patterns -------------------------------------------------
 #
@@ -125,6 +151,31 @@ def check_length(
         return None
     if len(text) > max_chars:
         return VERDICT_MESSAGE_TOO_LONG
+    return None
+
+
+def _normalize_for_prompt_injection(text: str) -> str:
+    """Normalize free text for the conservative custom detector.
+
+    The detector is phrase-based, not token-model based, so only cheap and
+    predictable normalization belongs here: lowercase and whitespace collapse.
+    """
+    return " ".join(text.casefold().split())
+
+
+def check_prompt_injection(text: str, enabled: bool = True) -> str | None:
+    """Stop explicit prompt-injection attempts with a conservative pattern set."""
+    if not enabled:
+        return None
+
+    normalized = _normalize_for_prompt_injection(text)
+    if not normalized:
+        return None
+
+    for pattern in _PROMPT_INJECTION_PATTERNS:
+        if pattern.search(normalized):
+            return VERDICT_PROMPT_INJECTION
+
     return None
 
 
@@ -282,6 +333,10 @@ def _run_length_check(text: str, config: Any) -> str | None:
     return check_length(text, config.max_message_chars)
 
 
+def _run_prompt_injection_check(text: str, config: Any) -> str | None:
+    return check_prompt_injection(text, config.detect_prompt_injection_custom)
+
+
 def _run_personal_data_check(text: str, config: Any) -> str | None:
     return check_personal_data(
         text,
@@ -297,7 +352,11 @@ def _run_personal_data_check(text: str, config: Any) -> str | None:
 # The order is the policy, not an accident: the cheap bound runs first, so the
 # pattern scans always work on a string of known size. Adding a check means
 # adding its adapter here and its reply mapping in the hooks module.
-INPUT_CHECKS = (_run_length_check, _run_personal_data_check)
+INPUT_CHECKS = (
+    _run_length_check,
+    _run_prompt_injection_check,
+    _run_personal_data_check,
+)
 
 
 def run_input_checks(text: str, config: Any) -> str | None:

@@ -19,6 +19,7 @@ The plugin is work in progress.
 Currently implemented:
 
 - maximum input length check
+- prompt injection guard with a built-in detector plus an optional local classifier
 - configurable Help Desk email
 - configurable fallback message for over-long requests
 
@@ -51,6 +52,12 @@ Available settings:
 - `Help Desk email`
 - `Maximum message length (characters)`
 - `Reply: message too long`
+- `Security guard: block explicit prompt injection patterns`
+- `Security guard: block prompt injection with local classifier`
+- `Security guard: prompt injection classifier model`
+- `Security guard: prompt injection classifier threshold`
+- `Security guard: Hugging Face token`
+- `Reply: prompt injection detected`
 
 The shipped default Help Desk address is a placeholder and should be replaced for real deployments.
 
@@ -65,6 +72,13 @@ If the message exceeds the configured length limit, the plugin returns a static 
 - no episodic storage for that refused message
 
 This behavior is implemented through a small hook layer in `ict_site_rag_guards.py` and pure decision logic in `checks.py`.
+
+The same early-stop path is also used by the prompt injection guard. It first
+applies a conservative built-in detector for explicit override or reveal
+attempts, then optionally runs a local classifier. When either one trips, the
+plugin returns a static reply before retrieval or generation. A detailed
+description of the guard lives in `DOC/SucurityGuards.md`, including when a
+Hugging Face token is needed for gated classifier models.
 
 ## Development
 

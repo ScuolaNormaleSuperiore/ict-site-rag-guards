@@ -32,6 +32,9 @@ the history.
 Reference: DEV/TODO/Workflow_RAG_Cheshire_Cat_AI_semplificato_v12.docx, Fasi 1-3.
 """
 
+import os
+import time
+
 from cat.log import log
 from cat.mad_hatter.decorators import hook
 from pydantic import ValidationError
@@ -43,21 +46,25 @@ try:
     from .checks import (
         VERDICT_MESSAGE_TOO_LONG,
         VERDICT_PERSONAL_DATA,
+        VERDICT_PROMPT_INJECTION,
         extract_text,
         matched_personal_data_kinds,
         phone_number_types,
         run_input_checks,
     )
+    from .prompt_injection_classifier import classify_prompt_injection
     from .settings import IctSiteRagGuardsSettings
 except ImportError:  # pragma: no cover - depends on how the module is loaded
     from checks import (
         VERDICT_MESSAGE_TOO_LONG,
         VERDICT_PERSONAL_DATA,
+        VERDICT_PROMPT_INJECTION,
         extract_text,
         matched_personal_data_kinds,
         phone_number_types,
         run_input_checks,
     )
+    from prompt_injection_classifier import classify_prompt_injection
     from settings import IctSiteRagGuardsSettings
 
 # Attribute used to carry a verdict across hooks within the same turn.
@@ -76,6 +83,7 @@ INPUT_GUARD_PRIORITY = -1
 REPLY_SETTING_BY_VERDICT = {
     VERDICT_MESSAGE_TOO_LONG: "message_too_long",
     VERDICT_PERSONAL_DATA: "personal_data_detected",
+    VERDICT_PROMPT_INJECTION: "prompt_injection_detected",
 }
 
 # Which personal-data detectors were switched off the last time we looked. A
@@ -204,7 +212,66 @@ def blocked_detail(
 
         return detail
 
+    if verdict == VERDICT_PROMPT_INJECTION:
+        return ", detector=custom"
+
     return ""
+
+
+def detect_prompt_injection_with_classifier(
+    text: str, settings: IctSiteRagGuardsSettings
+) -> dict[str, str | float] | None:
+    """Run the local prompt-injection classifier, fail-open on any error."""
+    if not settings.detect_prompt_injection_classifier:
+        return None
+
+    model_name = settings.prompt_injection_classifier_model.value
+    token = resolve_huggingface_token(settings)
+
+    started = time.perf_counter()
+    try:
+        result = classify_prompt_injection(
+            text,
+            model_name=model_name,
+            threshold=settings.prompt_injection_classifier_threshold,
+            max_length=settings.max_message_chars,
+            token=token,
+        )
+    except Exception as error:
+        log.warning(
+            "[ict-site-rag-guards] prompt-injection classifier unavailable "
+            f"({error}), continuing without blocking"
+        )
+        return None
+
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    if not result["triggered"]:
+        return None
+
+    return {
+        "detail": (
+            ", detector=classifier"
+            f", model={model_name}"
+            f", label={result['label']}"
+            f", score={result['score']:.3f}"
+            f", threshold={settings.prompt_injection_classifier_threshold:.2f}"
+            f", latency_ms={elapsed_ms:.1f}"
+        ),
+    }
+
+
+def resolve_huggingface_token(settings: IctSiteRagGuardsSettings) -> str | None:
+    """Return the Hugging Face token to use for gated models, if any.
+
+    Environment variables take precedence over admin settings so deployments can
+    keep secrets out of the plugin configuration when they want to.
+    """
+    token = os.getenv("HF_TOKEN", "").strip()
+    if token:
+        return token
+
+    token = settings.huggingface_token.strip()
+    return token or None
 
 
 @hook("fast_reply", priority=INPUT_GUARD_PRIORITY)
@@ -229,6 +296,13 @@ def guard_input_message(fast_reply, cat):
 
     text = extract_text(getattr(cat.working_memory, "user_message_json", None))
     verdict = run_input_checks(text, settings)
+    detail = blocked_detail(verdict, text, settings) if verdict is not None else ""
+
+    if verdict is None:
+        classifier_result = detect_prompt_injection_with_classifier(text, settings)
+        if classifier_result is not None:
+            verdict = VERDICT_PROMPT_INJECTION
+            detail = classifier_result["detail"]
 
     if verdict is None:
         return fast_reply
@@ -243,7 +317,7 @@ def guard_input_message(fast_reply, cat):
 
     log.info(
         f"[ict-site-rag-guards] input blocked, verdict='{verdict}'"
-        f"{blocked_detail(verdict, text, settings)}; "
+        f"{detail}; "
         f"no retrieval, no generation, nothing stored in memory"
     )
     return {"output": reply}

@@ -10,3 +10,10 @@
 # when another plugin installed a different one — and would break that plugin if
 # this one is activated first. See DEV/AGENTS/AI_BEHAVIOR.md.
 phonenumberslite>=9
+
+# The prompt-injection classifier is a deliberate heavier dependency: this v1
+# measures whether a local model-based guard is worth its latency and package
+# cost. Both packages are declared explicitly so the plugin does not depend on
+# whichever other plugins may happen to be installed on a development instance.
+transformers>=4.55
+torch>=2
