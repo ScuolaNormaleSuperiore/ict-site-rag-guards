@@ -44,6 +44,9 @@ from pydantic import ValidationError
 # lets the tests import this module directly, with the plugin folder on the path.
 try:
     from .checks import (
+        CATEGORY_LIMITS,
+        CATEGORY_PRIVACY,
+        CATEGORY_SECURITY,
         VERDICT_MESSAGE_LENGTH,
         VERDICT_PERSONAL_DATA,
         VERDICT_PROMPT_INJECTION,
@@ -58,6 +61,9 @@ try:
     from .settings import IctSiteRagGuardsSettings
 except ImportError:  # pragma: no cover - depends on how the module is loaded
     from checks import (
+        CATEGORY_LIMITS,
+        CATEGORY_PRIVACY,
+        CATEGORY_SECURITY,
         VERDICT_MESSAGE_LENGTH,
         VERDICT_PERSONAL_DATA,
         VERDICT_PROMPT_INJECTION,
@@ -97,11 +103,11 @@ REPLY_SETTING_BY_VERDICT = {
     VERDICT_PROMPT_INJECTION: "prompt_injection_detected",
 }
 
-# Which personal-data detectors were switched off the last time we looked. A
-# detector disabled from the admin panel leaves no other trace, and this plugin
-# exists to prevent silent gaps, so a change is announced in the log once
-# instead of at every turn.
-_ANNOUNCED_DISABLED_DETECTORS: tuple[str, ...] | None = None
+# The guard configuration as it was last announced. A guard disabled from the
+# admin panel leaves no other trace, and this plugin exists to prevent silent
+# gaps, so the whole configuration is announced once and then only when it
+# changes — not at every turn, which would be noise on every conversation.
+_ANNOUNCED_GUARD_SUMMARY: str | None = None
 
 
 def load_settings(cat) -> IctSiteRagGuardsSettings:
@@ -157,16 +163,11 @@ def reply_for(verdict: str, settings: IctSiteRagGuardsSettings) -> str | None:
     return _render(getattr(settings, setting_name), settings)
 
 
-def announce_disabled_detectors(settings: IctSiteRagGuardsSettings) -> None:
-    """Log the personal-data detectors that are switched off, when that changes.
-
-    Four independent toggles are four ways to disable a privacy control without
-    leaving a trace anywhere. This is the only place that state becomes visible
-    without opening the admin form.
-    """
-    global _ANNOUNCED_DISABLED_DETECTORS
-
-    disabled = tuple(
+def enabled_privacy_detectors(
+    settings: IctSiteRagGuardsSettings,
+) -> tuple[str, ...]:
+    """The personal-data detectors currently switched on."""
+    return tuple(
         name
         for name, enabled in (
             ("email", settings.detect_email),
@@ -174,21 +175,105 @@ def announce_disabled_detectors(settings: IctSiteRagGuardsSettings) -> None:
             ("iban", settings.detect_iban),
             ("phone", settings.detect_phone),
         )
-        if not enabled
+        if enabled
     )
 
-    if disabled == _ANNOUNCED_DISABLED_DETECTORS:
-        return
 
-    if disabled:
-        log.warning(
-            f"[ict-site-rag-guards] personal-data detectors disabled: "
-            f"{', '.join(disabled)}"
+def enabled_check_names(settings: IctSiteRagGuardsSettings) -> tuple[str, ...]:
+    """Which input checks are effectively active, in the order they run.
+
+    A check whose configuration disables it — a non-positive length limit, all
+    four privacy detectors off — is not listed, because it decides nothing.
+    """
+    names = []
+    if settings.max_message_chars > 0:
+        names.append("length")
+    if settings.detect_prompt_injection_custom:
+        names.append("injection_patterns")
+    if enabled_privacy_detectors(settings):
+        names.append("personal_data")
+    if settings.detect_prompt_injection_classifier:
+        # Last on purpose: it runs only when every deterministic check passed.
+        names.append("injection_classifier")
+    return tuple(names)
+
+
+def active_guards_summary(
+    settings: IctSiteRagGuardsSettings,
+) -> tuple[str, tuple[str, ...]]:
+    """The guard configuration as one line, plus the categories left uncovered.
+
+    One string per category, so the line reads as the answer to «what is
+    actually protecting this instance» — the question the admin form answers
+    only by being opened, field by field.
+    """
+    if settings.max_message_chars > 0:
+        limits = f"{CATEGORY_LIMITS}(max {settings.max_message_chars} chars)"
+    else:
+        limits = f"{CATEGORY_LIMITS}(disabled)"
+
+    detectors = enabled_privacy_detectors(settings)
+    if detectors:
+        privacy = (
+            f"{CATEGORY_PRIVACY}({'+'.join(detectors)}, "
+            f"region={settings.phone_region})"
         )
     else:
-        log.info("[ict-site-rag-guards] all personal-data detectors enabled")
+        privacy = f"{CATEGORY_PRIVACY}(disabled)"
 
-    _ANNOUNCED_DISABLED_DETECTORS = disabled
+    mechanisms = []
+    if settings.detect_prompt_injection_custom:
+        mechanisms.append("patterns")
+    if settings.detect_prompt_injection_classifier:
+        mechanisms.append(
+            f"classifier {settings.prompt_injection_classifier_model.value}"
+            f"@{settings.prompt_injection_classifier_threshold:.2f}"
+        )
+    if mechanisms:
+        security = f"{CATEGORY_SECURITY}({'+'.join(mechanisms)})"
+    else:
+        security = f"{CATEGORY_SECURITY}(disabled)"
+
+    uncovered = tuple(
+        category
+        for category, description in (
+            (CATEGORY_LIMITS, limits),
+            (CATEGORY_PRIVACY, privacy),
+            (CATEGORY_SECURITY, security),
+        )
+        if description.endswith("(disabled)")
+    )
+
+    return f"{limits}, {privacy}, {security}", uncovered
+
+
+def announce_active_guards(settings: IctSiteRagGuardsSettings) -> None:
+    """Log the guard configuration once, and again whenever it changes.
+
+    Not at every turn: on a message that passes, the plugin writes nothing at
+    `INFO`, and that silence used to be indistinguishable from the plugin not
+    running at all. This line is what tells the two apart. Announced on change
+    rather than per message so the cost stays at one tuple comparison and the
+    log of a normal conversation stays readable.
+
+    A category with nothing left enabled is a `WARNING`, because that is the
+    state where the chatbot is unguarded and nothing else says so.
+    """
+    global _ANNOUNCED_GUARD_SUMMARY
+
+    summary, uncovered = active_guards_summary(settings)
+    if summary == _ANNOUNCED_GUARD_SUMMARY:
+        return
+
+    if uncovered:
+        log.warning(
+            f"[ict-site-rag-guards] guards active: {summary}; "
+            f"no guard covers: {', '.join(uncovered)}"
+        )
+    else:
+        log.info(f"[ict-site-rag-guards] guards active: {summary}")
+
+    _ANNOUNCED_GUARD_SUMMARY = summary
 
 
 def blocked_detail(
@@ -305,12 +390,17 @@ def guard_input_message(fast_reply, cat):
     No generative call happens here: the checks are deterministic and cost
     computation, not tokens.
     """
+    # The span covers everything this hook costs the turn, settings included:
+    # the first message after an activation also pays the classifier model load,
+    # and that is worth seeing rather than hiding.
+    started = time.perf_counter()
+
     # Reset any verdict from the previous turn: working memory lives for the
     # whole session, and this is the earliest hook of the turn.
     setattr(cat.working_memory, VERDICT_ATTRIBUTE, None)
 
     settings = load_settings(cat)
-    announce_disabled_detectors(settings)
+    announce_active_guards(settings)
 
     text = extract_text(getattr(cat.working_memory, "user_message_json", None))
     verdict = run_input_checks(text, settings)
@@ -322,7 +412,22 @@ def guard_input_message(fast_reply, cat):
             verdict = VERDICT_PROMPT_INJECTION
             detail = classifier_result["detail"]
 
+    elapsed_ms = (time.perf_counter() - started) * 1000
+
     if verdict is None:
+        # DEBUG, not INFO: one line per message would be noise on every normal
+        # conversation, and the announcement above already proves the guards are
+        # running. This is for diagnosing one specific message, where `checks=`
+        # is the answer to whether the turn was covered and by what.
+        # Two decimals, not one: the deterministic checks cost hundredths of a
+        # millisecond, and `latency_ms=0.0` reads as a broken timer rather than
+        # as a fast path. The classifier, when it runs, is three orders of
+        # magnitude above that and stays readable either way.
+        log.debug(
+            f"[ict-site-rag-guards] input allowed, "
+            f"checks={'+'.join(enabled_check_names(settings)) or 'none'}, "
+            f"latency_ms={elapsed_ms:.2f}"
+        )
         return fast_reply
 
     reply = reply_for(verdict, settings)
@@ -336,7 +441,7 @@ def guard_input_message(fast_reply, cat):
     log.info(
         f"[ict-site-rag-guards] input blocked, "
         f"category='{category_of(verdict)}', verdict='{verdict}'"
-        f"{detail}; "
+        f"{detail}, latency_ms={elapsed_ms:.2f}; "
         f"no retrieval, no generation, nothing stored in memory"
     )
     return {"output": reply}

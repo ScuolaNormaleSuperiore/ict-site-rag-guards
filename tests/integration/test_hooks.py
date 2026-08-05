@@ -667,6 +667,221 @@ class TestConfiguration:
         )
 
 
+class TestGuardAnnouncement:
+    """What proves the guards are running when nothing trips.
+
+    On a message that passes, the plugin writes nothing at `INFO`, and that
+    silence is indistinguishable from the plugin not being active at all. This
+    announcement is what tells the two apart, so its absence is a real defect
+    even though nothing breaks.
+    """
+
+    @pytest.fixture(autouse=True)
+    def forget_previous_announcement(self):
+        # Module-level state: without this reset the first test to run would be
+        # the only one that ever sees a line.
+        guards._ANNOUNCED_GUARD_SUMMARY = None
+        yield
+        guards._ANNOUNCED_GUARD_SUMMARY = None
+
+    def test_the_configuration_is_announced_on_the_first_message(self, monkeypatch):
+        cat = make_cat()
+        lines = []
+        monkeypatch.setattr(guards.log, "info", lines.append)
+
+        send(cat, "How do I activate the VPN?")
+
+        assert any("guards active:" in line for line in lines)
+
+    def test_the_announcement_covers_all_three_categories(self, monkeypatch):
+        # The old version named only the four privacy detectors, so switching
+        # off the length or the injection guard left no trace anywhere.
+        cat = make_cat()
+        lines = []
+        monkeypatch.setattr(guards.log, "info", lines.append)
+
+        send(cat, "How do I activate the VPN?")
+
+        announcement = next(line for line in lines if "guards active:" in line)
+        for category in (
+            checks.CATEGORY_LIMITS,
+            checks.CATEGORY_PRIVACY,
+            checks.CATEGORY_SECURITY,
+        ):
+            assert f"{category}(" in announcement
+
+    def test_it_is_not_repeated_on_every_message(self, monkeypatch):
+        # The whole point of announcing on change: one line, not one per turn.
+        cat = make_cat()
+        lines = []
+        monkeypatch.setattr(guards.log, "info", lines.append)
+
+        for _ in range(5):
+            send(cat, "How do I activate the VPN?")
+
+        assert sum("guards active:" in line for line in lines) == 1
+
+    def test_a_configuration_change_is_announced_again(self, monkeypatch):
+        lines = []
+        monkeypatch.setattr(guards.log, "info", lines.append)
+
+        send(make_cat({"max_message_chars": 1000}), "Come attivo la VPN?")
+        send(make_cat({"max_message_chars": 500}), "Come attivo la VPN?")
+
+        announcements = [line for line in lines if "guards active:" in line]
+        assert len(announcements) == 2
+        assert "max 1000 chars" in announcements[0]
+        assert "max 500 chars" in announcements[1]
+
+    @pytest.mark.parametrize(
+        "stored, uncovered",
+        [
+            ({"max_message_chars": 0}, "limits"),
+            (
+                {
+                    "detect_email": False,
+                    "detect_codice_fiscale": False,
+                    "detect_iban": False,
+                    "detect_phone": False,
+                },
+                "privacy",
+            ),
+            (
+                {
+                    "detect_prompt_injection_custom": False,
+                    "detect_prompt_injection_classifier": False,
+                },
+                "security",
+            ),
+        ],
+    )
+    def test_a_category_left_uncovered_is_a_warning(
+        self, monkeypatch, stored, uncovered
+    ):
+        # Not an info line: this is the state where the chatbot is unguarded,
+        # and nothing else in the system says so.
+        warnings = []
+        monkeypatch.setattr(guards.log, "warning", warnings.append)
+
+        send(make_cat(stored), "Come attivo la VPN?")
+
+        assert any(f"no guard covers: {uncovered}" in line for line in warnings)
+
+    def test_a_full_configuration_is_announced_as_info(self, monkeypatch):
+        infos, warnings = [], []
+        monkeypatch.setattr(guards.log, "info", infos.append)
+        monkeypatch.setattr(guards.log, "warning", warnings.append)
+
+        send(make_cat({}), "Come attivo la VPN?")
+
+        assert any("guards active:" in line for line in infos)
+        assert not [line for line in warnings if "guards active:" in line]
+
+    def test_the_summary_reports_the_classifier_model_and_threshold(self):
+        settings = settings_module.IctSiteRagGuardsSettings()
+
+        summary, uncovered = guards.active_guards_summary(settings)
+
+        assert "meta-llama/Llama-Prompt-Guard-2-86M@0.85" in summary
+        assert uncovered == ()
+
+
+class TestAllowedPathLogging:
+    def test_a_passing_message_is_logged_at_debug_not_info(self, monkeypatch):
+        cat = make_cat()
+        infos, debugs = [], []
+        monkeypatch.setattr(guards.log, "info", infos.append)
+        monkeypatch.setattr(guards.log, "debug", debugs.append)
+        monkeypatch.setattr(
+            guards,
+            "classify_prompt_injection",
+            lambda *a, **k: {"triggered": False, "label": "BENIGN", "score": 0.01},
+        )
+
+        send(cat, "How do I activate the VPN?")
+
+        assert any("input allowed" in line for line in debugs)
+        assert not [line for line in infos if "input allowed" in line]
+
+    def test_the_allowed_line_names_the_checks_that_covered_the_turn(
+        self, monkeypatch
+    ):
+        cat = make_cat()
+        debugs = []
+        monkeypatch.setattr(guards.log, "debug", debugs.append)
+        monkeypatch.setattr(
+            guards,
+            "classify_prompt_injection",
+            lambda *a, **k: {"triggered": False, "label": "BENIGN", "score": 0.01},
+        )
+
+        send(cat, "How do I activate the VPN?")
+
+        line = next(line for line in debugs if "input allowed" in line)
+        assert "checks=length+injection_patterns+personal_data" in line
+        assert "injection_classifier" in line
+        assert "latency_ms=" in line
+
+    def test_an_unguarded_turn_says_so(self, monkeypatch):
+        # Every check disabled: the line must read `checks=none` rather than an
+        # empty field, which would look like a formatting accident.
+        cat = make_cat(
+            {
+                "max_message_chars": 0,
+                "detect_email": False,
+                "detect_codice_fiscale": False,
+                "detect_iban": False,
+                "detect_phone": False,
+                "detect_prompt_injection_custom": False,
+                "detect_prompt_injection_classifier": False,
+            }
+        )
+        debugs = []
+        monkeypatch.setattr(guards.log, "debug", debugs.append)
+
+        send(cat, "How do I activate the VPN?")
+
+        assert any("checks=none" in line for line in debugs)
+
+    def test_the_allowed_line_never_carries_the_message(self, monkeypatch):
+        cat = make_cat()
+        debugs = []
+        monkeypatch.setattr(guards.log, "debug", debugs.append)
+        monkeypatch.setattr(
+            guards,
+            "classify_prompt_injection",
+            lambda *a, **k: {"triggered": False, "label": "BENIGN", "score": 0.01},
+        )
+
+        send(cat, "il mio problema riservato con la stampante di reparto")
+
+        assert all("stampante di reparto" not in line for line in debugs)
+
+    def test_the_blocked_line_reports_latency_too(self, monkeypatch):
+        # So the two paths are comparable when measuring the guard's cost.
+        cat = make_cat()
+        lines = []
+        monkeypatch.setattr(guards.log, "info", lines.append)
+
+        send(cat, "a" * 5000)
+
+        assert any(
+            "input blocked" in line and "latency_ms=" in line for line in lines
+        )
+
+    def test_disabled_checks_are_left_out_of_the_list(self):
+        settings = settings_module.IctSiteRagGuardsSettings(
+            max_message_chars=0, detect_prompt_injection_classifier=False
+        )
+
+        names = guards.enabled_check_names(settings)
+
+        assert "length" not in names
+        assert "injection_classifier" not in names
+        assert "injection_patterns" in names
+        assert "personal_data" in names
+
+
 class TestSettingsModel:
     def test_every_verdict_has_a_reply_setting(self):
         # Adding a check without its reply would silently fall back to the

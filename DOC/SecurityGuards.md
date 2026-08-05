@@ -140,6 +140,17 @@ installed only because another plugin shares the same Cheshire Cat instance.
 The guard logs the minimum information needed to evaluate effectiveness and
 latency without logging the original message text.
 
+Whether the guard is active at all is announced separately, once when the plugin
+starts guarding and again on every configuration change, never per message. The
+`security(...)` part of that line reports which mechanisms are on, with the
+model and threshold in use; with both mechanisms off it becomes a `WARNING`
+naming `security` as uncovered. This matters because a disabled guard is
+otherwise indistinguishable, in the log, from a guard that finds nothing.
+
+A message that passes writes one line at `DEBUG` only, listing the checks that
+covered the turn — `injection_patterns`, `injection_classifier` — and the
+latency. At the default `INFO` level a clean conversation stays silent.
+
 When a block happens, the logs identify at least:
 
 - the guard category, `security`, and the verdict, `prompt_injection`

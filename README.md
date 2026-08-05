@@ -87,20 +87,47 @@ plugin returns a static reply before retrieval or generation. A detailed
 description of the guard lives in `DOC/SecurityGuards.md`, including when a
 Hugging Face token is needed for gated classifier models.
 
-### What a refusal records
+### What the log records
 
-Every refusal writes one `INFO` line naming the guard that stopped the request,
-so a block can be told apart from a normal answer, and from another plugin's
-block, without guessing:
+A guardrail that stops working raises no error: the chatbot simply keeps
+answering unguarded. The log is what makes that visible, so it answers two
+different questions.
+
+**Which guards are active.** One line when the plugin starts guarding, and again
+whenever the configuration changes — not on every message:
 
 ```
-[ict-site-rag-guards] input blocked, category='privacy', verdict='personal_data', detected=email+phone (mobile); no retrieval, no generation, nothing stored in memory
+[ict-site-rag-guards] guards active: limits(max 1000 chars), privacy(email+codice_fiscale+iban+phone, region=IT), security(patterns+classifier meta-llama/Llama-Prompt-Guard-2-86M@0.85)
+```
+
+When a whole family is switched off, the same line is a `WARNING` and names what
+is left uncovered, because that is the state in which the chatbot is exposed and
+nothing else reports it:
+
+```
+[ict-site-rag-guards] guards active: limits(max 500 chars), privacy(disabled), security(patterns+classifier …); no guard covers: privacy
+```
+
+**Why a request was refused.** One `INFO` line per block, naming the guard that
+stopped it, so a refusal can be told apart from a normal answer and from another
+plugin's block:
+
+```
+[ict-site-rag-guards] input blocked, category='privacy', verdict='personal_data', detected=email+phone (mobile), latency_ms=0.14; no retrieval, no generation, nothing stored in memory
 ```
 
 `category` is the guard family — `limits`, `privacy`, `security` — and is what
 makes refusals countable per family. `verdict` is the control that tripped, and
 the fields after it describe the violation: the length against the limit, which
 detectors matched, or which injection pattern and classifier score fired.
+
+Messages that pass write nothing at `INFO`. Set `CCAT_LOG_LEVEL=DEBUG` to get
+one line per allowed message, which is the level to use when diagnosing a
+specific request:
+
+```
+[ict-site-rag-guards] input allowed, checks=length+injection_patterns+personal_data+injection_classifier, latency_ms=0.03
+```
 
 The refused message itself is never logged, on any path. That is deliberate: on
 the privacy guard it would defeat the check it is reporting. One consequence is
