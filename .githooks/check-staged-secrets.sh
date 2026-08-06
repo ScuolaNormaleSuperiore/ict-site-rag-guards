@@ -68,6 +68,17 @@ patterns=(
 	'(AKIA|ASIA)[A-Z0-9]{16}'
 	'gh[pousr]_[A-Za-z0-9]{36,255}'
 	'github_pat_[A-Za-z0-9_]{20,}'
+	# Hugging Face user access token, and the one credential this plugin actually
+	# handles: it has an admin field for it and reads two environment variables, so
+	# it is the value most likely to be pasted into a snippet, a fixture or a
+	# support note. Without this line the scan guarded every credential except the
+	# only one in play here — verified by staging a token three realistic ways and
+	# watching the commit pass.
+	#
+	# The bound is 20 characters after the prefix, not 8. Real tokens run past 30,
+	# while the fakes the test suite needs — `hf_test`, `hf_admin_token` — stay well
+	# below, so this catches the accident without forcing an exemption mechanism.
+	'hf_[A-Za-z0-9]{20,}'
 	'xox[baprs]-[A-Za-z0-9-]{10,}'
 	'sk-[A-Za-z0-9]{20,}'
 	'[A-Za-z][A-Za-z0-9+.-]*://[^[:space:]]+:[^[:space:]]+@[^[:space:]]+'

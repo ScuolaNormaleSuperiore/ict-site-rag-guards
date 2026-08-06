@@ -16,12 +16,16 @@ try:
         ClassifierUnavailable,
         classifier_load_error,
         get_pipeline,
+        model_labels,
+        runtime_log,
     )
 except ImportError:  # pragma: no cover - depends on how the module is loaded
     from classifier_runtime import (
         ClassifierUnavailable,
         classifier_load_error,
         get_pipeline,
+        model_labels,
+        runtime_log,
     )
 
 # Re-exported so callers that already import them from here keep working, and so
@@ -44,9 +48,42 @@ PROMPT_INJECTION_CLASSIFIER_LABELS = {
     "deepset/deberta-v3-base-injection": "INJECTION",
 }
 
+# Models whose declared labels have already been checked, so the verification
+# runs once per model rather than once per message.
+_VERIFIED_MODELS: set[str] = set()
+
 
 def supported_prompt_injection_classifier_models() -> tuple[str, ...]:
     return tuple(PROMPT_INJECTION_CLASSIFIER_LABELS)
+
+
+def _warn_on_label_mismatch(model_name: str, pipeline) -> None:
+    """Say out loud when a model cannot reach its expected blocking label.
+
+    This is narrower than the offensive-input guard's check because the decision
+    rule here is narrower too: one expected label per model, not a set of
+    semantic classes. If the model does not declare that label at all, the check
+    is enabled but can never block, and without this warning it looks exactly
+    like a quiet classifier finding nothing.
+    """
+    if model_name in _VERIFIED_MODELS:
+        return
+
+    returned = tuple(label.upper() for label in model_labels(pipeline))
+    if not returned:  # pragma: no cover - defensive, every supported model has it
+        return
+
+    _VERIFIED_MODELS.add(model_name)
+    expected = PROMPT_INJECTION_CLASSIFIER_LABELS[model_name]
+    if expected in returned:
+        return
+
+    runtime_log.warning(
+        f"[ict-site-rag-guards] prompt-injection classifier model {model_name} "
+        f"returns labels {'+'.join(returned)}, not the expected blocking label "
+        f"{expected}; the check is enabled but cannot block anything. Its label "
+        "mapping in prompt_injection_classifier.py needs updating"
+    )
 
 
 def classify_prompt_injection(
@@ -70,7 +107,10 @@ def classify_prompt_injection(
         pipeline_kwargs["truncation"] = True
         pipeline_kwargs["max_length"] = max_length
 
-    result = get_pipeline(model_name, token=token)(text, **pipeline_kwargs)
+    pipeline = get_pipeline(model_name, token=token)
+    _warn_on_label_mismatch(model_name, pipeline)
+
+    result = pipeline(text, **pipeline_kwargs)
     top = result[0] if isinstance(result, list) else result
 
     label = str(top.get("label", "")).strip().upper()

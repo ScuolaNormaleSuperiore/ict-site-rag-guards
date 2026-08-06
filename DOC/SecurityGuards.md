@@ -260,6 +260,12 @@ During model loading, the runtime also logs, at `INFO`:
 - when model loading fails, as a warning
 - when a classifier pipeline is found already cached in memory
 
+On the first successful use of each configured model, the plugin also checks
+that the model actually declares the expected blocking label for that model —
+`MALICIOUS` for the Meta models, `INJECTION` for the DeBERTa one. If not, it
+logs a `WARNING` saying the classifier is enabled but cannot block anything
+until its label mapping is updated.
+
 A pipeline found already cached in memory is currently logged at `INFO` too.
 That is acceptable for v1 because it makes classifier reuse visible while the
 feature is being evaluated, but if it proves too noisy under real traffic it

@@ -1243,7 +1243,7 @@ class TestSettingsModel:
         The token is checked in three shapes because a partial leak is still a
         leak: the whole value, the part after the `hf_` prefix, and the tail.
         """
-        token = "hf_averyrecognisabletokenvalue0123456789"
+        token = "hf_fakevaluefortests"
         lines = []
         for level in ("info", "warning", "debug", "error"):
             monkeypatch.setattr(guards.log, level, lines.append, raising=False)

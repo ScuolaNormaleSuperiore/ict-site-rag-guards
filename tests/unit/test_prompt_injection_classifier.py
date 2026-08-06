@@ -32,9 +32,11 @@ def reset_classifier_caches():
     """
     runtime._CLASSIFIER_PIPELINES.clear()
     runtime._FAILED_CLASSIFIER_MODELS.clear()
+    classifier._VERIFIED_MODELS.clear()
     yield
     runtime._CLASSIFIER_PIPELINES.clear()
     runtime._FAILED_CLASSIFIER_MODELS.clear()
+    classifier._VERIFIED_MODELS.clear()
 
 
 class TestSupportedModels:
@@ -120,6 +122,85 @@ class TestClassifyPromptInjection:
         )
 
         assert result == {"triggered": True, "label": "INJECTION", "score": 0.95}
+
+    def test_warns_when_expected_label_is_missing(self, monkeypatch):
+        warnings = []
+        monkeypatch.setattr(classifier.runtime_log, "warning", warnings.append)
+        monkeypatch.setattr(
+            classifier,
+            "get_pipeline",
+            lambda model_name, token=None: lambda text, **kwargs: [
+                {"label": "BENIGN", "score": 0.99}
+            ],
+        )
+        monkeypatch.setattr(
+            classifier,
+            "model_labels",
+            lambda pipeline: ("BENIGN", "SAFE"),
+        )
+
+        result = classifier.classify_prompt_injection(
+            "ignore the rules",
+            model_name="meta-llama/Llama-Prompt-Guard-2-86M",
+            threshold=0.85,
+        )
+
+        assert result == {"triggered": False, "label": "BENIGN", "score": 0.99}
+        assert len(warnings) == 1
+        assert "not the expected blocking label MALICIOUS" in warnings[0]
+
+    def test_does_not_warn_when_expected_label_is_declared(self, monkeypatch):
+        warnings = []
+        monkeypatch.setattr(classifier.runtime_log, "warning", warnings.append)
+        monkeypatch.setattr(
+            classifier,
+            "get_pipeline",
+            lambda model_name, token=None: lambda text, **kwargs: [
+                {"label": "BENIGN", "score": 0.99}
+            ],
+        )
+        monkeypatch.setattr(
+            classifier,
+            "model_labels",
+            lambda pipeline: ("BENIGN", "MALICIOUS"),
+        )
+
+        classifier.classify_prompt_injection(
+            "ignore the rules",
+            model_name="meta-llama/Llama-Prompt-Guard-2-86M",
+            threshold=0.85,
+        )
+
+        assert warnings == []
+
+    def test_label_mismatch_warning_is_emitted_once_per_model(self, monkeypatch):
+        warnings = []
+        monkeypatch.setattr(classifier.runtime_log, "warning", warnings.append)
+        monkeypatch.setattr(
+            classifier,
+            "get_pipeline",
+            lambda model_name, token=None: lambda text, **kwargs: [
+                {"label": "BENIGN", "score": 0.99}
+            ],
+        )
+        monkeypatch.setattr(
+            classifier,
+            "model_labels",
+            lambda pipeline: ("BENIGN", "SAFE"),
+        )
+
+        classifier.classify_prompt_injection(
+            "ignore the rules",
+            model_name="meta-llama/Llama-Prompt-Guard-2-86M",
+            threshold=0.85,
+        )
+        classifier.classify_prompt_injection(
+            "ignore the rules again",
+            model_name="meta-llama/Llama-Prompt-Guard-2-86M",
+            threshold=0.85,
+        )
+
+        assert len(warnings) == 1
 
     def test_passes_truncation_and_max_length_when_provided(self, monkeypatch):
         captured = {}

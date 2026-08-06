@@ -225,7 +225,7 @@ class TestRedactSecrets:
     only one of them is obvious.
     """
 
-    TOKEN = "hf_averyrecognisabletokenvalue0123456789"
+    TOKEN = "hf_fakevaluefortests"
 
     def test_a_token_we_were_given_is_removed(self):
         text = f"401 Client Error with authorization header {self.TOKEN}"
