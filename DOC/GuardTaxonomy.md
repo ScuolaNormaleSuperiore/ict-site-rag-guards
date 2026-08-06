@@ -53,6 +53,7 @@ Current categories:
 - `limits`
 - `privacy`
 - `security`
+- `tone`
 - `quality`
 
 Meaning of each category:
@@ -68,10 +69,20 @@ Meaning of each category:
   - attempts to bypass rules, manipulate the assistant, or obtain hidden
     instructions
   - examples: prompt injection, jailbreak-style input
+- `tone`
+  - register: how the user expresses themselves, and how the assistant does
+  - examples: offensive or violent incoming message; answer written in a
+    non-institutional tone
 - `quality`
-  - answer correctness or fitness problems that are not primarily privacy or
-    security issues
-  - examples: groundedness, relevance, language mismatch, tone mismatch
+  - answer correctness or fitness problems that are not primarily privacy,
+    security or register issues
+  - examples: groundedness, relevance, language mismatch
+
+`tone` and `quality` are the pair most easily confused, so the boundary is
+stated rather than left to judgement: `tone` is about *how* something is said,
+`quality` about whether the answer is *right and useful*. An answer that is
+grounded and correct but rude is a `tone` problem; an answer that is polite and
+ungrounded is a `quality` problem.
 
 Category names must describe the **type of issue**, not where it happened.
 
@@ -89,7 +100,9 @@ Examples of current and planned verdicts:
 - `message_length`
 - `personal_data`
 - `prompt_injection`
+- `offensive_input`
 - `output_personal_data`
+- `output_tone`
 - `output_language_mismatch`
 - `output_groundedness`
 
@@ -104,14 +117,21 @@ telemetry.
 | `input` | `limits` | `message_length` |
 | `input` | `privacy` | `personal_data` |
 | `input` | `security` | `prompt_injection` |
+| `input` | `tone` | `offensive_input` |
+| `output` | `privacy` | `output_personal_data` |
 
 Planned output examples:
 
 | Stage | Category | Verdict |
 | --- | --- | --- |
-| `output` | `privacy` | `output_personal_data` |
+| `output` | `tone` | `output_tone` |
 | `output` | `quality` | `output_language_mismatch` |
 | `output` | `quality` | `output_groundedness` |
+
+`privacy` and `tone` each carry a verdict on both stages, which is the clearest
+demonstration that the axes are orthogonal and not nested: the category says what
+kind of problem it is, the stage says where it was caught, and neither is derived
+from the other.
 
 ## Naming rules
 
@@ -163,8 +183,10 @@ Examples:
   - `verdict='output_personal_data'`
 - a future output tone check:
   - `stage='output'`
-  - `category='quality'`
+  - `category='tone'`
   - `verdict='output_tone'`
+  - the same category as the input offensive check, because the kind of problem
+    is the same one seen from the other end of the turn
 - a future retrieval normalization check:
   - `stage='retrieval'`
   - category depends on what it protects

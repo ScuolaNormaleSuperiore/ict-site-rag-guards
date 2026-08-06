@@ -57,8 +57,10 @@ try:
         CATEGORY_LIMITS,
         CATEGORY_PRIVACY,
         CATEGORY_SECURITY,
+        CATEGORY_TONE,
         STAGE_INPUT,
         VERDICT_MESSAGE_LENGTH,
+        VERDICT_OFFENSIVE_INPUT,
         VERDICT_OUTPUT_PERSONAL_DATA,
         VERDICT_PERSONAL_DATA,
         VERDICT_PROMPT_INJECTION,
@@ -71,18 +73,19 @@ try:
         run_input_checks,
         stage_of,
     )
-    from .prompt_injection_classifier import (
-        classifier_load_error,
-        classify_prompt_injection,
-    )
+    from .classifier_runtime import classifier_load_error
+    from .offensive_input_classifier import classify_offensive_input
+    from .prompt_injection_classifier import classify_prompt_injection
     from .settings import IctSiteRagGuardsSettings
 except ImportError:  # pragma: no cover - depends on how the module is loaded
     from checks import (
         CATEGORY_LIMITS,
         CATEGORY_PRIVACY,
         CATEGORY_SECURITY,
+        CATEGORY_TONE,
         STAGE_INPUT,
         VERDICT_MESSAGE_LENGTH,
+        VERDICT_OFFENSIVE_INPUT,
         VERDICT_OUTPUT_PERSONAL_DATA,
         VERDICT_PERSONAL_DATA,
         VERDICT_PROMPT_INJECTION,
@@ -95,10 +98,9 @@ except ImportError:  # pragma: no cover - depends on how the module is loaded
         run_input_checks,
         stage_of,
     )
-    from prompt_injection_classifier import (
-        classifier_load_error,
-        classify_prompt_injection,
-    )
+    from classifier_runtime import classifier_load_error
+    from offensive_input_classifier import classify_offensive_input
+    from prompt_injection_classifier import classify_prompt_injection
     from settings import IctSiteRagGuardsSettings
 
 # Where the verdict of the turn is recorded. `WorkingMemory` allows extra
@@ -115,6 +117,25 @@ VERDICT_ATTRIBUTE = "ict_guard_verdict"
 # unambiguously last, and being last is what makes this plugin's reply win.
 INPUT_GUARD_PRIORITY = -1
 
+# Which categories ship with a guard switched on, and therefore the only ones
+# that can be reported as *uncovered* in the announcement below.
+#
+# That field answers a narrower question than «is this category guarded»: it
+# answers «was a protection this plugin provides by default switched off», which
+# is a deviation worth a WARNING. `tone` ships disabled on purpose — a second
+# model in memory, and a precision still to be measured — so listing it would put
+# a WARNING on every fresh installation and teach everyone to ignore the line,
+# including on the day privacy really is off. The summary still reports
+# `tone(disabled)`, so the state stays visible; only the severity of the whole
+# announcement does not follow it.
+#
+# When the tone guard's default flips to enabled, add it here in the same change.
+CATEGORIES_ENABLED_BY_DEFAULT = (
+    CATEGORY_LIMITS,
+    CATEGORY_PRIVACY,
+    CATEGORY_SECURITY,
+)
+
 # Which settings field holds the reply text of each verdict. Adding a check
 # means adding an entry here and a field to the settings model; the tests fail
 # if the two get out of step.
@@ -130,6 +151,7 @@ REPLY_SETTING_BY_VERDICT = {
     VERDICT_PERSONAL_DATA: "personal_data_detected",
     VERDICT_OUTPUT_PERSONAL_DATA: "output_personal_data_detected",
     VERDICT_PROMPT_INJECTION: "prompt_injection_detected",
+    VERDICT_OFFENSIVE_INPUT: "offensive_input_detected",
 }
 
 # The guard configuration as it was last announced. A guard disabled from the
@@ -143,6 +165,12 @@ _ANNOUNCED_GUARD_SUMMARY: str | None = None
 # it once per turn would bury the log without adding information, since the state
 # cannot change until the plugin reloads.
 _ANNOUNCED_CLASSIFIER_FAILURE: str | None = None
+
+# The same, for the offensive-input classifier. A separate name rather than a
+# shared registry because what the two failures have to say differs: prompt
+# injection still has its built-in patterns to fall back on, the tone guard has
+# nothing else at all.
+_ANNOUNCED_OFFENSIVE_CLASSIFIER_FAILURE: str | None = None
 
 
 def load_settings(cat) -> IctSiteRagGuardsSettings:
@@ -249,6 +277,12 @@ def enabled_check_names(settings: IctSiteRagGuardsSettings) -> tuple[str, ...]:
         # not covering anything, and listing it would make the line claim a
         # coverage the turn did not have.
         names.append("injection_classifier")
+    if settings.detect_offensive_input_classifier and not classifier_load_error(
+        settings.offensive_input_classifier_model.value
+    ):
+        # After the injection classifier, matching the order they run in. Same
+        # rule as above: a model that failed to load is not covering anything.
+        names.append("offensive_input")
     return tuple(names)
 
 
@@ -293,17 +327,28 @@ def active_guards_summary(
     else:
         security = f"{CATEGORY_SECURITY}(disabled)"
 
+    if settings.detect_offensive_input_classifier:
+        tone = (
+            f"{CATEGORY_TONE}(classifier "
+            f"{settings.offensive_input_classifier_model.value}"
+            f"@{settings.offensive_input_classifier_threshold:.2f})"
+        )
+    else:
+        tone = f"{CATEGORY_TONE}(disabled)"
+
     uncovered = tuple(
         category
         for category, description in (
             (CATEGORY_LIMITS, limits),
             (CATEGORY_PRIVACY, privacy),
             (CATEGORY_SECURITY, security),
+            (CATEGORY_TONE, tone),
         )
         if description.endswith("(disabled)")
+        and category in CATEGORIES_ENABLED_BY_DEFAULT
     )
 
-    return f"{limits}, {privacy}, {security}", uncovered
+    return f"{limits}, {privacy}, {security}, {tone}", uncovered
 
 
 def announce_active_guards(settings: IctSiteRagGuardsSettings) -> None:
@@ -490,6 +535,80 @@ def detect_prompt_injection_with_classifier(
     }
 
 
+def announce_offensive_classifier_failure(
+    error: Exception, settings: IctSiteRagGuardsSettings
+) -> None:
+    """Report a fail-open offensive-input classifier once, saying what is left.
+
+    What is left is nothing, and that is the difference from the prompt-injection
+    announcement: that guard falls back on its built-in patterns, this one has no
+    deterministic half. When its model does not load, the `tone` category is
+    uncovered, and this line is the only place that says so — the `guards active`
+    announcement was built from the settings and therefore claimed a classifier
+    that turns out not to run.
+    """
+    global _ANNOUNCED_OFFENSIVE_CLASSIFIER_FAILURE
+
+    reported = f"{settings.offensive_input_classifier_model.value}: {error}"
+    if reported == _ANNOUNCED_OFFENSIVE_CLASSIFIER_FAILURE:
+        return
+    _ANNOUNCED_OFFENSIVE_CLASSIFIER_FAILURE = reported
+
+    log.warning(
+        f"[ict-site-rag-guards] offensive-input classifier unavailable "
+        f"({reported}), continuing without blocking; no guard covers: "
+        f"{CATEGORY_TONE} — this check has no deterministic fallback. "
+        "Not repeated until the plugin reloads"
+    )
+
+
+def detect_offensive_input(
+    text: str, settings: IctSiteRagGuardsSettings
+) -> dict[str, str | float] | None:
+    """Run the local offensive-input classifier, fail-open on any error.
+
+    Last of the input checks, so it runs only on a message every other one let
+    through. Fail-open for the same reason as the prompt-injection classifier: a
+    model that cannot run must leave the message alone rather than take down the
+    hook that runs before retrieval.
+    """
+    if not settings.detect_offensive_input_classifier:
+        return None
+
+    model_name = settings.offensive_input_classifier_model.value
+    token = resolve_huggingface_token(settings)
+
+    started = time.perf_counter()
+    try:
+        result = classify_offensive_input(
+            text,
+            model_name=model_name,
+            threshold=settings.offensive_input_classifier_threshold,
+            token=token,
+        )
+    except Exception as error:
+        announce_offensive_classifier_failure(error, settings)
+        return None
+
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    if not result["triggered"]:
+        return None
+
+    # `label` is the strongest blocking class, `score` the sum of all of them:
+    # without both, a refusal at 0.9 would not say whether the model saw an
+    # insult or a threat, and the sum alone names no behaviour.
+    return {
+        "detail": (
+            ", detector=classifier"
+            f", model={model_name}"
+            f", label={result['label']}"
+            f", score={result['score']:.3f}"
+            f", threshold={settings.offensive_input_classifier_threshold:.2f}"
+            f", latency_ms={elapsed_ms:.1f}"
+        ),
+    }
+
+
 def resolve_huggingface_token(settings: IctSiteRagGuardsSettings) -> str | None:
     """Return the Hugging Face token to use for gated models, if any.
 
@@ -538,6 +657,16 @@ def guard_input_message(fast_reply, cat):
         if classifier_result is not None:
             verdict = VERDICT_PROMPT_INJECTION
             detail = classifier_result["detail"]
+
+    if verdict is None:
+        # Last, and the order decides one thing worth knowing: a message that is
+        # both offensive and an injection attempt is reported as
+        # `prompt_injection`, because an attack on the assistant is the more
+        # pertinent correction to give back.
+        offensive_result = detect_offensive_input(text, settings)
+        if offensive_result is not None:
+            verdict = VERDICT_OFFENSIVE_INPUT
+            detail = offensive_result["detail"]
 
     elapsed_ms = (time.perf_counter() - started) * 1000
 

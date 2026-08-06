@@ -29,7 +29,9 @@ INCLUDED_FILES = (
     "LICENSE",
     "requirements.txt",
     "checks.py",
+    "classifier_runtime.py",
     "prompt_injection_classifier.py",
+    "offensive_input_classifier.py",
     "settings.py",
     "ict_site_rag_guards.py",
 )

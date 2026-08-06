@@ -38,6 +38,7 @@ VERDICT_MESSAGE_LENGTH = "message_length"
 VERDICT_PERSONAL_DATA = "personal_data"
 VERDICT_OUTPUT_PERSONAL_DATA = "output_personal_data"
 VERDICT_PROMPT_INJECTION = "prompt_injection"
+VERDICT_OFFENSIVE_INPUT = "offensive_input"
 
 # The single source for which verdicts exist. Tests derive from this instead of
 # introspecting the module for a name prefix, which would keep passing on an
@@ -47,6 +48,7 @@ ALL_VERDICTS = (
     VERDICT_PERSONAL_DATA,
     VERDICT_OUTPUT_PERSONAL_DATA,
     VERDICT_PROMPT_INJECTION,
+    VERDICT_OFFENSIVE_INPUT,
 )
 
 # Where a guard acts in the pipeline. Only `input` is implemented today, but
@@ -67,11 +69,19 @@ CATEGORY_LIMITS = "limits"
 CATEGORY_PRIVACY = "privacy"
 CATEGORY_SECURITY = "security"
 
+# Register: how the user expresses themselves, and how the assistant does. Kept
+# apart from `security`, which is about manipulating the assistant, and from
+# `quality`, which is about whether the answer is right and useful — an answer
+# that is grounded and rude is a `tone` problem, one that is polite and
+# ungrounded is a `quality` one. See DOC/GuardTaxonomy.md, the single source.
+CATEGORY_TONE = "tone"
+
 STAGE_BY_VERDICT = {
     VERDICT_MESSAGE_LENGTH: STAGE_INPUT,
     VERDICT_PERSONAL_DATA: STAGE_INPUT,
     VERDICT_OUTPUT_PERSONAL_DATA: STAGE_OUTPUT,
     VERDICT_PROMPT_INJECTION: STAGE_INPUT,
+    VERDICT_OFFENSIVE_INPUT: STAGE_INPUT,
 }
 
 # Every verdict has one, including those set outside this module: the classifier
@@ -83,6 +93,7 @@ CATEGORY_BY_VERDICT = {
     VERDICT_PERSONAL_DATA: CATEGORY_PRIVACY,
     VERDICT_OUTPUT_PERSONAL_DATA: CATEGORY_PRIVACY,
     VERDICT_PROMPT_INJECTION: CATEGORY_SECURITY,
+    VERDICT_OFFENSIVE_INPUT: CATEGORY_TONE,
 }
 
 # What an unclassified verdict is reported as. Not an exception: a gap in the

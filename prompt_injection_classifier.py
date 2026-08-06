@@ -1,19 +1,39 @@
-"""Runtime support for the prompt-injection classifier.
+"""Local classifier for prompt-injection attempts.
 
-This module deliberately imports `transformers` lazily. The plugin must keep
-working when the dependency is missing or the model cannot load: the prompt
-injection classifier is fail-open by design in v1.
+Only the decision rule lives here: one expected label per model, compared against
+a threshold. The machinery around it — pipeline cache, negative cache on failed
+loads, lazy `transformers` import, fail-open contract — is in
+`classifier_runtime.py`, shared with the offensive-input classifier.
+
+The plugin must keep working when the dependency is missing or the model cannot
+load: this classifier is fail-open by design in v1.
 """
 
 from __future__ import annotations
 
-import logging
-from typing import Any
-
 try:
-    from cat.log import log as runtime_log
-except Exception:  # pragma: no cover - available only with the core importable
-    runtime_log = logging.getLogger(__name__)
+    from .classifier_runtime import (
+        ClassifierUnavailable,
+        classifier_load_error,
+        get_pipeline,
+    )
+except ImportError:  # pragma: no cover - depends on how the module is loaded
+    from classifier_runtime import (
+        ClassifierUnavailable,
+        classifier_load_error,
+        get_pipeline,
+    )
+
+# Re-exported so callers that already import them from here keep working, and so
+# this module reads as the whole prompt-injection story in one place.
+__all__ = [
+    "ClassifierUnavailable",
+    "DEFAULT_PROMPT_INJECTION_CLASSIFIER_MODEL",
+    "PROMPT_INJECTION_CLASSIFIER_LABELS",
+    "classifier_load_error",
+    "classify_prompt_injection",
+    "supported_prompt_injection_classifier_models",
+]
 
 
 DEFAULT_PROMPT_INJECTION_CLASSIFIER_MODEL = "meta-llama/Llama-Prompt-Guard-2-86M"
@@ -24,86 +44,9 @@ PROMPT_INJECTION_CLASSIFIER_LABELS = {
     "deepset/deberta-v3-base-injection": "INJECTION",
 }
 
-_CLASSIFIER_PIPELINES: dict[str, Any] = {}
-
-# Models whose load already failed, with the reason. This is a negative cache and
-# it exists for cost, not for tidiness: without it every message retries the
-# load, and `transformers` re-resolves the repository on the Hub each time, so
-# the shipped default — a gated Meta model with no token — costs a network round
-# trip inside `fast_reply`, the hook that runs before everything else.
-#
-# Retrying cannot help anyway: the token comes from the settings or from the
-# environment, and neither changes without the plugin reloading, which clears
-# this dict along with the successful pipelines above.
-_FAILED_CLASSIFIER_MODELS: dict[str, str] = {}
-
-
-class ClassifierUnavailable(RuntimeError):
-    """A model that already failed to load and is not being retried."""
-
-
-def classifier_load_error(model_name: str) -> str | None:
-    """Why this model is unavailable, or None if it has not failed.
-
-    Lets callers keep their own reporting honest — a check that cannot run must
-    not be listed among the ones covering a turn.
-    """
-    return _FAILED_CLASSIFIER_MODELS.get(model_name)
-
 
 def supported_prompt_injection_classifier_models() -> tuple[str, ...]:
     return tuple(PROMPT_INJECTION_CLASSIFIER_LABELS)
-
-
-def _get_pipeline(model_name: str, token: str | None = None):
-    pipeline = _CLASSIFIER_PIPELINES.get(model_name)
-    if pipeline is not None:
-        # INFO for v1, deliberately, even though this fires on every message
-        # that reaches the classifier: while the feature is being evaluated,
-        # seeing the pipeline being reused is worth the volume. It is the one
-        # line this plugin writes per message at the default level — reconsider
-        # demoting it to DEBUG once real traffic shows whether it is noise.
-        # See DOC/SecurityGuards.md, section *Logging and measurement*.
-        runtime_log.info(
-            "[ict-site-rag-guards] prompt-injection classifier pipeline cache hit "
-            f"for model {model_name}"
-        )
-        return pipeline
-
-    previous_error = _FAILED_CLASSIFIER_MODELS.get(model_name)
-    if previous_error is not None:
-        # Nothing is logged here: the failure was reported when it happened, and
-        # repeating it once per message is the flood this cache removes.
-        raise ClassifierUnavailable(previous_error)
-
-    from transformers import pipeline as transformers_pipeline
-
-    runtime_log.info(
-        "[ict-site-rag-guards] loading prompt-injection classifier model "
-        f"{model_name} into memory; Transformers will use the local Hugging Face "
-        "cache when available and download missing files if needed"
-    )
-    try:
-        pipeline = transformers_pipeline(
-            "text-classification",
-            model=model_name,
-            token=token,
-        )
-    except Exception as error:
-        _FAILED_CLASSIFIER_MODELS[model_name] = str(error)
-        runtime_log.warning(
-            "[ict-site-rag-guards] failed to load prompt-injection classifier "
-            f"model {model_name}: {error}; it will not be retried until the "
-            "plugin reloads"
-        )
-        raise
-
-    runtime_log.info(
-        "[ict-site-rag-guards] prompt-injection classifier model "
-        f"{model_name} loaded and cached in memory"
-    )
-    _CLASSIFIER_PIPELINES[model_name] = pipeline
-    return pipeline
 
 
 def classify_prompt_injection(
@@ -127,7 +70,7 @@ def classify_prompt_injection(
         pipeline_kwargs["truncation"] = True
         pipeline_kwargs["max_length"] = max_length
 
-    result = _get_pipeline(model_name, token=token)(text, **pipeline_kwargs)
+    result = get_pipeline(model_name, token=token)(text, **pipeline_kwargs)
     top = result[0] if isinstance(result, list) else result
 
     label = str(top.get("label", "")).strip().upper()

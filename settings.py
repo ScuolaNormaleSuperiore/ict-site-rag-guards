@@ -20,6 +20,11 @@ try:
         DEFAULT_PHONE_REGION,
         DEFAULT_PROMPT_INJECTION_CLASSIFIER_THRESHOLD,
     )
+    from .offensive_input_classifier import (
+        DEFAULT_OFFENSIVE_INPUT_CLASSIFIER_MODEL,
+        DEFAULT_OFFENSIVE_INPUT_CLASSIFIER_THRESHOLD,
+        supported_offensive_input_classifier_models,
+    )
     from .prompt_injection_classifier import (
         DEFAULT_PROMPT_INJECTION_CLASSIFIER_MODEL,
         supported_prompt_injection_classifier_models,
@@ -29,6 +34,11 @@ except ImportError:  # pragma: no cover - depends on how the module is loaded
         DEFAULT_MAX_MESSAGE_CHARS,
         DEFAULT_PHONE_REGION,
         DEFAULT_PROMPT_INJECTION_CLASSIFIER_THRESHOLD,
+    )
+    from offensive_input_classifier import (
+        DEFAULT_OFFENSIVE_INPUT_CLASSIFIER_MODEL,
+        DEFAULT_OFFENSIVE_INPUT_CLASSIFIER_THRESHOLD,
+        supported_offensive_input_classifier_models,
     )
     from prompt_injection_classifier import (
         DEFAULT_PROMPT_INJECTION_CLASSIFIER_MODEL,
@@ -99,10 +109,30 @@ DEFAULT_PROMPT_INJECTION_DETECTED = (
 )
 
 
+DEFAULT_OFFENSIVE_INPUT_DETECTED = (
+    "Non posso elaborare messaggi con contenuti offensivi o violenti. "
+    "Sono qui per aiutarti sui servizi ICT: riformula la richiesta descrivendo "
+    "il problema tecnico che stai riscontrando e la seguo volentieri. "
+    "Se preferisci parlare con una persona, scrivi all'Help Desk ICT: "
+    "{help_desk_email}\n\n"
+    "I cannot process messages containing offensive or violent content. "
+    "I am here to help you with ICT services: please rephrase your request "
+    "describing the technical problem you are facing and I will gladly follow "
+    "up. If you would rather talk to a person, write to the ICT Help Desk: "
+    "{help_desk_email}"
+)
+
+
 class PromptInjectionClassifierModel(str, Enum):
     LLAMA_PROMPT_GUARD_86M = "meta-llama/Llama-Prompt-Guard-2-86M"
     LLAMA_PROMPT_GUARD_22M = "meta-llama/Llama-Prompt-Guard-2-22M"
     DEBERTA_INJECTION = "deepset/deberta-v3-base-injection"
+
+
+class OffensiveInputClassifierModel(str, Enum):
+    IMSYPP_MULTILINGUAL = "IMSyPP/hate_speech_multilingual"
+    HS_MULTILINGUAL_DNR = "patriciacarla/HS-multilingual-DNR"
+    TEXTDETOX_TOXICITY = "textdetox/bert-multilingual-toxicity-classifier"
 
 
 class IctSiteRagGuardsSettings(BaseModel):
@@ -329,6 +359,60 @@ class IctSiteRagGuardsSettings(BaseModel):
         extra={"type": "TextArea"},
     )
 
+    detect_offensive_input_classifier: bool = Field(
+        default=False,
+        title="Tone guard: block offensive incoming messages with local classifier",
+        description=(
+            "Runs a local text-classification model on the incoming message and "
+            "refuses offensive or violent content. This is the only check in "
+            "this plugin that ships switched off, for two reasons: it loads a "
+            "second model into memory and adds one inference to every message "
+            "that reaches it, and its precision on real help-desk traffic still "
+            "has to be measured. Enable it after checking the log line it writes "
+            "on the first message. If loading or inference fails, the message "
+            "continues and the plugin logs a warning."
+        ),
+    )
+
+    offensive_input_classifier_model: OffensiveInputClassifierModel = Field(
+        default=OffensiveInputClassifierModel(DEFAULT_OFFENSIVE_INPUT_CLASSIFIER_MODEL),
+        title="Tone guard: offensive input classifier model",
+        description=(
+            "Local model used by the offensive-input check. The default is "
+            "multilingual and covers Italian and English. Each supported model "
+            "carries its own set of blocking classes inside the plugin, so "
+            "switching model does not require reconfiguring labels."
+        ),
+    )
+
+    offensive_input_classifier_threshold: float = Field(
+        default=DEFAULT_OFFENSIVE_INPUT_CLASSIFIER_THRESHOLD,
+        ge=0.0,
+        le=1.0,
+        title="Tone guard: offensive input classifier threshold",
+        description=(
+            "Minimum confidence needed to refuse a message. Careful: unlike the "
+            "prompt injection threshold, this one is compared against the SUM of "
+            "the classes that count as offensive for the selected model, because "
+            "those classes are mutually exclusive and a message can be split "
+            "between them. The same number therefore means something stricter "
+            "here, and the shipped default is lower for that reason. Measured "
+            "starting point: an exasperated user swearing at a broken service "
+            "scores around 0.42 and passes, explicit hate speech around 0.78 and "
+            "is refused."
+        ),
+    )
+
+    offensive_input_detected: str = Field(
+        default=DEFAULT_OFFENSIVE_INPUT_DETECTED,
+        title="Tone guard: reply — offensive content detected",
+        description=(
+            "Sent when the offensive-input check refuses a message. "
+            "Use {help_desk_email} as a placeholder for the address above."
+        ),
+        extra={"type": "TextArea"},
+    )
+
     @field_validator("help_desk_email")
     @classmethod
     def _must_look_like_an_address(cls, value: str) -> str:
@@ -363,11 +447,25 @@ class IctSiteRagGuardsSettings(BaseModel):
             raise ValueError(f"unsupported model; choose one of: {allowed}")
         return value
 
+    @field_validator("offensive_input_classifier_model", mode="before")
+    @classmethod
+    def _must_be_a_supported_offensive_model(
+        cls, value: str | OffensiveInputClassifierModel
+    ) -> str | OffensiveInputClassifierModel:
+        raw_value = (
+            value.value if isinstance(value, OffensiveInputClassifierModel) else value
+        )
+        if raw_value not in supported_offensive_input_classifier_models():
+            allowed = ", ".join(supported_offensive_input_classifier_models())
+            raise ValueError(f"unsupported model; choose one of: {allowed}")
+        return value
+
     @field_validator(
         "message_too_long",
         "personal_data_detected",
         "output_personal_data_detected",
         "prompt_injection_detected",
+        "offensive_input_detected",
     )
     @classmethod
     def _reply_must_not_be_empty(cls, value: str) -> str:

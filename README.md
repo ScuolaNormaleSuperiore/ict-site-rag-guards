@@ -23,10 +23,11 @@ Currently implemented:
 - personal-data guard for e-mail, codice fiscale, IBAN and phone numbers
 - output personal-data guard on generated replies
 - prompt injection guard with a built-in detector plus an optional local classifier
+- offensive-input guard with a local multilingual classifier, shipped switched off
 - configurable Help Desk email
-- configurable static replies for over-long requests, personal data, output personal data and prompt injection
+- configurable static replies for over-long requests, personal data, output personal data, prompt injection and offensive content
 
-Planned next steps include additional input checks, prompt policy, further output checks, and telemetry.
+Planned next steps include prompt policy, further output checks, and telemetry.
 
 The naming of guards is documented in [DOC/GuardTaxonomy.md](DOC/GuardTaxonomy.md). The plugin keeps three axes separate:
 
@@ -80,6 +81,16 @@ read together in the form:
 - `Security guard: prompt injection classifier threshold`
 - `Security guard: Hugging Face token`
 - `Security guard: reply — prompt injection detected`
+- `Tone guard: block offensive incoming messages with local classifier`
+- `Tone guard: offensive input classifier model`
+- `Tone guard: offensive input classifier threshold`
+- `Tone guard: reply — offensive content detected`
+
+One setting is shipped **switched off**, and it is the only one:
+`Tone guard: block offensive incoming messages with local classifier`. It loads a
+second model into memory and adds one inference to every message that reaches it,
+and its precision on real help-desk traffic still has to be measured, so enabling
+it is an explicit decision. Everything else ships enabled.
 
 The shipped default Help Desk address is a placeholder and should be replaced for real deployments.
 
@@ -122,7 +133,7 @@ different questions.
 whenever the configuration changes — not on every message:
 
 ```
-[ict-site-rag-guards] guards active: limits(max 1000 chars), privacy(input=email+codice_fiscale+iban+phone, input_region=IT, output=email, output_region=IT), security(patterns+classifier meta-llama/Llama-Prompt-Guard-2-86M@0.85)
+[ict-site-rag-guards] guards active: limits(max 1000 chars), privacy(input=email+codice_fiscale+iban+phone, input_region=IT, output=email, output_region=IT), security(patterns+classifier meta-llama/Llama-Prompt-Guard-2-86M@0.85), tone(disabled)
 ```
 
 When a whole family is switched off, the same line is a `WARNING` and names what
@@ -130,8 +141,17 @@ is left uncovered, because that is the state in which the chatbot is exposed and
 nothing else reports it:
 
 ```
-[ict-site-rag-guards] guards active: limits(max 500 chars), privacy(disabled), security(patterns+classifier …); no guard covers: privacy
+[ict-site-rag-guards] guards active: limits(max 500 chars), privacy(disabled), security(patterns+classifier …), tone(disabled); no guard covers: privacy
 ```
+
+`tone(disabled)` is in both examples and in neither warning, which is deliberate.
+The `no guard covers` field answers the narrower question «was a protection this
+plugin provides by default switched off», and the tone guard ships off. A
+`WARNING` on every fresh installation would teach everyone to skip this line,
+including on the day privacy really is disabled — so the state is reported in the
+text and does not raise the severity. Once the tone guard is enabled and its
+model fails to load, that *is* a warning, because then the category is uncovered
+without anyone having chosen it.
 
 **Why a request was refused.** One `INFO` line per block, naming the guard that
 stopped it, so a refusal can be told apart from a normal answer and from another
@@ -147,15 +167,27 @@ For the current output guard:
 [ict-site-rag-guards] output blocked, stage='output', category='privacy', verdict='output_personal_data', detected=email; generated reply replaced before delivery
 ```
 
+And for the offensive-input guard, when it is enabled:
+
+```
+[ict-site-rag-guards] input blocked, stage='input', category='tone', verdict='offensive_input', detector=classifier, model=IMSyPP/hate_speech_multilingual, label=violent, score=0.999, threshold=0.60, latency_ms=79.2; no retrieval, no generation, nothing stored in memory
+```
+
 `stage`, `category`, and `verdict` are three separate fields by design:
 
-- `stage` says where the guard acted, currently `input`
 - `stage` says where the guard acted, currently `input` or `output`
-- `category` says the guard family — `limits`, `privacy`, `security`
+- `category` says the guard family — `limits`, `privacy`, `security`, `tone`
 - `verdict` says the specific control that tripped
 
 The fields after them describe the violation: the length against the limit,
 which detectors matched, or which injection pattern and classifier score fired.
+
+On the offensive-input line, `score` needs one caution: it is the **sum** of the
+classes that count as offensive for that model, not the score of the single class
+named in `label`. Those classes are mutually exclusive, so a message can be split
+between them and be certainly offensive without any one of them being high. That
+is why this guard's threshold is lower than the prompt-injection one — the two
+numbers do not measure the same thing.
 
 A message that passes writes no *verdict* line: the guards stay silent when they
 find nothing. Set `CCAT_LOG_LEVEL=DEBUG` to get one line per allowed message,
@@ -182,6 +214,9 @@ data-protection question independent of this plugin.
 Main files:
 
 - `checks.py`: pure guard logic
+- `classifier_runtime.py`: machinery shared by the local models — pipeline cache, negative cache on failed loads, fail-open contract
+- `prompt_injection_classifier.py`: one expected label against a threshold
+- `offensive_input_classifier.py`: the sum of a model's offensive classes against a threshold
 - `settings.py`: plugin settings model and shipped defaults
 - `ict_site_rag_guards.py`: Cheshire Cat hooks and settings loading
 - `tests/`: the test suite, described in [DOC/TESTING.md](DOC/TESTING.md)
