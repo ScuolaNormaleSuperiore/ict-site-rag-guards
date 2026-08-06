@@ -32,7 +32,7 @@ python -m pip install pytest phonenumberslite
 
 `phonenumberslite` is there because `checks.py` imports it at module level: the personal-data guard validates phone numbers against a numbering plan rather than matching a shape. Without it `tests/unit` fails at import, loudly, which is the wanted outcome: a guard whose behaviour depends on what happens to be installed is worse than one that refuses to start.
 
-It is not the plugin's only runtime dependency — `requirements.txt` also declares `transformers` and `torch` for the prompt-injection classifier, and the core installs all three on activation. **They are deliberately absent from the command above**, and that is not an oversight: `prompt_injection_classifier.py` imports `transformers` lazily, inside `_get_pipeline()`, so nothing under `tests/unit` touches it — the classifier tests exercise the decision logic around a stubbed pipeline. Adding `torch` to a local install would cost gigabytes and buy nothing. If a future test needs the real pipeline it belongs in `tests/integration/`, where the container already has it.
+It is not the plugin's only runtime dependency — `requirements.txt` also declares `transformers` and `torch` for the optional local classifiers, and the core installs all three on activation. **They are deliberately absent from the command above**, and that is not an oversight: both `prompt_injection_classifier.py` and `offensive_input_classifier.py` import `transformers` lazily, inside `_get_pipeline()`, so nothing under `tests/unit` touches it — the classifier tests exercise the decision logic around a stubbed pipeline. Adding `torch` to a local install would cost gigabytes and buy nothing. If a future test needs the real pipeline it belongs in `tests/integration/`, where the container already has it.
 
 Container, whole suite:
 
@@ -85,6 +85,35 @@ Verification against a real instance is currently manual: activate the plugin, s
 This tier matters because it catches what the other two cannot. The interaction with the `Rate Limiter` plugin is the case in point: its checks used to intercept messages before this plugin ever saw them, and nothing in the code of either plugin showed it. The hook priority now settles who answers, and a unit test guards the priority, but the ordering itself is only ever confirmed on a running instance.
 
 The same tier is where another plugin's side effects show up. Above its own `max_prompt_length`, Rate Limiter still records an infraction and suspends the user for 5, 15 or 60 minutes, silently blocking their next legitimate messages, even though the reply delivered is this plugin's. No test can see that either.
+
+### Which log line proves which path handled the turn
+
+A correct-looking answer does not say where it came from. This table is what makes
+a live session conclusive, and it is the reference for every manual check below.
+
+| What handled the turn | What the log shows | Level |
+| --- | --- | --- |
+| An input guard refused | `input blocked, stage='input', category=…, verdict=…` followed by `no retrieval, no generation, nothing stored in memory` | `INFO` |
+| The output guard replaced the answer | `output blocked, stage='output', category='privacy', verdict='output_personal_data'` followed by `generated reply replaced before delivery` | `INFO` |
+| Everything passed, normal answer | **nothing** from this plugin at `INFO`; one line naming the checks that covered the turn at `DEBUG` | `DEBUG` |
+| A classifier could not run, message let through | `classifier unavailable (…), continuing without blocking` — **once**, not per message | `WARNING` |
+| Another plugin refused it | **nothing** from this plugin: its checks passed and it returned the reply it received untouched | — |
+| The configuration changed | `guards active: …`, once per change, `WARNING` instead of `INFO` when a category that ships enabled has been switched off | `INFO`/`WARNING` |
+
+Two readings of this table are worth stating, because they are what makes it
+useful rather than decorative.
+
+**Silence at `INFO` is a result, not an absence.** A turn that produces no line
+from this plugin is a turn every guard allowed. Distinguishing «allowed» from «the
+plugin is not running» is what the `guards active` announcement is for, and it is
+why that line exists at all.
+
+**A model-produced fallback leaves no trace here.** When the answer is the
+insufficiency message the prompt asks for — «la risposta non è reperibile nei
+contenuti disponibili» — no plugin line is written, because no plugin was
+involved: the model obeyed an instruction. Such a turn is indistinguishable in the
+log from a normal answer, which is precisely why *how often the recall comes back
+empty* is an open issue and not something the log already answers.
 
 ### Manual check still outstanding: the tone guard
 

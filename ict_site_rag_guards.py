@@ -39,7 +39,6 @@ A second hook, `before_cat_sends_message`, filters the outgoing answer for
 personal data before the user sees it and before the AI turn is written to the
 conversation history.
 
-Reference: DEV/TODO/Workflow_RAG_Cheshire_Cat_AI_semplificato_v12.docx, Fasi 1-2.
 """
 
 import os
@@ -73,7 +72,7 @@ try:
         run_input_checks,
         stage_of,
     )
-    from .classifier_runtime import classifier_load_error
+    from .classifier_runtime import classifier_load_error, redact_secrets
     from .offensive_input_classifier import classify_offensive_input
     from .prompt_injection_classifier import classify_prompt_injection
     from .settings import IctSiteRagGuardsSettings
@@ -98,7 +97,7 @@ except ImportError:  # pragma: no cover - depends on how the module is loaded
         run_input_checks,
         stage_of,
     )
-    from classifier_runtime import classifier_load_error
+    from classifier_runtime import classifier_load_error, redact_secrets
     from offensive_input_classifier import classify_offensive_input
     from prompt_injection_classifier import classify_prompt_injection
     from settings import IctSiteRagGuardsSettings
@@ -474,7 +473,12 @@ def announce_classifier_failure(
     """
     global _ANNOUNCED_CLASSIFIER_FAILURE
 
-    reported = f"{settings.prompt_injection_classifier_model.value}: {error}"
+    # The exception text belongs to a third-party library: redact before it is
+    # formatted into a line that goes to the log at WARNING.
+    reported = (
+        f"{settings.prompt_injection_classifier_model.value}: "
+        f"{redact_secrets(str(error), resolve_huggingface_token(settings))}"
+    )
     if reported == _ANNOUNCED_CLASSIFIER_FAILURE:
         return
     _ANNOUNCED_CLASSIFIER_FAILURE = reported
@@ -549,7 +553,10 @@ def announce_offensive_classifier_failure(
     """
     global _ANNOUNCED_OFFENSIVE_CLASSIFIER_FAILURE
 
-    reported = f"{settings.offensive_input_classifier_model.value}: {error}"
+    reported = (
+        f"{settings.offensive_input_classifier_model.value}: "
+        f"{redact_secrets(str(error), resolve_huggingface_token(settings))}"
+    )
     if reported == _ANNOUNCED_OFFENSIVE_CLASSIFIER_FAILURE:
         return
     _ANNOUNCED_OFFENSIVE_CLASSIFIER_FAILURE = reported
@@ -725,6 +732,12 @@ def guard_output_message(message, cat):
     the model call, but it still stops the answer from reaching the user and
     from being written to the AI side of the conversation history as generated.
     """
+    # Timed like the input guard, and for the same reason: latency per stage is
+    # only comparable between stages if both stages report it. The span covers the
+    # settings read too, which on this path is the dominant cost — the detectors
+    # work on an answer, not on an arbitrary user string.
+    started = time.perf_counter()
+
     settings = load_settings(cat)
     if not output_privacy_checks_enabled(settings):
         return message
@@ -752,7 +765,8 @@ def guard_output_message(message, cat):
         f"[ict-site-rag-guards] output blocked, "
         f"stage='{stage_of(verdict)}', "
         f"category='{category_of(verdict)}', verdict='{verdict}'"
-        f"{blocked_detail(verdict, text, settings)}; "
+        f"{blocked_detail(verdict, text, settings)}, "
+        f"latency_ms={(time.perf_counter() - started) * 1000:.2f}; "
         "generated reply replaced before delivery"
     )
     return replace_message_text(message, reply)

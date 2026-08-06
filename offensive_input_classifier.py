@@ -8,8 +8,7 @@ threshold is compared against the **sum** of the blocking ones.
 The shared machinery — pipeline cache, negative cache, lazy `transformers`
 import, fail-open contract — lives in `classifier_runtime.py`.
 
-Reference: DOC/ToneGuards.md, which describes this guard in detail, and
-DEV/TODO/RagGuardsPlan.md, Fase 2.
+Reference: DOC/ToneGuards.md, which describes this guard in detail.
 """
 
 from __future__ import annotations

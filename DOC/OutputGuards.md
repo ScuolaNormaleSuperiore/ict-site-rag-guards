@@ -101,8 +101,8 @@ re-add them to a plan as missing work.
 | Check | Intended taxonomy | Where it is tracked |
 | --- | --- | --- |
 | Answer language matches the question | `output` / `quality` / `output_language_mismatch` | An open issue in `DEV/AGENTS/ISSUES_TODO.md`, plus the manual checklist in `DOC/TestingCode.md`. Deliberately a **final verification**, not a guard |
-| Groundedness and citation consistency | `output` / `quality` / `output_groundedness` | An open issue in `DEV/AGENTS/ISSUES_TODO.md`; architectural alternatives in `DEV/TODO/ResponseConsistencyChecksPlan.md` |
-| Register of the answer | `output` / `tone` / `output_tone` | Planned for Fase 5 in `DEV/TODO/RagGuardsPlan.md`. Its category is `tone`, the same as the input offensive check — see `DOC/ToneGuards.md` |
+| Groundedness and citation consistency | `output` / `quality` / `output_groundedness` | An open issue in `DEV/AGENTS/ISSUES_TODO.md`; the architecture is still intentionally left open until a citation format exists |
+| Register of the answer | `output` / `tone` / `output_tone` | An open issue in `DEV/AGENTS/ISSUES_TODO.md`, together with the single-rewrite strategy that would remedy it. Its category is `tone`, the same as the input offensive check — see `DOC/ToneGuards.md` |
 
 Why the language check is a verification rather than a guard is worth knowing,
 because it looks like an easy win: making the *model* answer in the language of

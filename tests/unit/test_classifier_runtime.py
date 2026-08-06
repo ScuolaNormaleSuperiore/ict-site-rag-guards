@@ -212,6 +212,98 @@ class TestAccessRemediation:
         assert "accept the model terms" in warnings[0]
 
 
+class TestRedactSecrets:
+    """The one secret this plugin handles, kept out of the log.
+
+    This function exists because the plugin interpolates **third-party exception
+    messages** into its own warnings, and their content is not ours to control: an
+    HTTP error from the Hub can carry a request URL or an authorization header. It
+    was added after a real leak, found by a test on 2026-08-06 — the announcement
+    of a classifier failure was writing the token to the log at `WARNING`.
+
+    Its two passes are tested separately because they cover different threats and
+    only one of them is obvious.
+    """
+
+    TOKEN = "hf_averyrecognisabletokenvalue0123456789"
+
+    def test_a_token_we_were_given_is_removed(self):
+        text = f"401 Client Error with authorization header {self.TOKEN}"
+
+        assert self.TOKEN not in runtime.redact_secrets(text, self.TOKEN)
+
+    def test_a_token_we_were_never_given_is_removed_too(self):
+        """The pass whose reason is easy to miss, and the only one that can help.
+
+        A credential can reach an exception text from somewhere the plugin never
+        saw it: `huggingface_hub` reads its own cache file and its own environment
+        variables. Passing no token must still redact something token-shaped.
+        """
+        text = f"401 Client Error for a repo, token {self.TOKEN} rejected"
+
+        redacted = runtime.redact_secrets(text)
+
+        assert self.TOKEN not in redacted
+        assert runtime.REDACTED in redacted
+
+    def test_a_token_that_does_not_look_like_one_is_removed_by_value(self):
+        # `HF_TOKEN` holds whatever the deployment puts in it, and the pattern
+        # cannot recognise an arbitrary string. This is why the exact value is
+        # replaced as well.
+        odd = "not-shaped-like-a-hugging-face-token-at-all"
+        text = f"authentication failed for {odd}"
+
+        assert odd not in runtime.redact_secrets(text, odd)
+
+    def test_no_fragment_of_the_token_survives(self):
+        # A partial leak is still a leak: assert on the tail, not only on the
+        # whole value.
+        redacted = runtime.redact_secrets(f"header {self.TOKEN}", self.TOKEN)
+
+        assert self.TOKEN[-16:] not in redacted
+        assert self.TOKEN.removeprefix("hf_") not in redacted
+
+    def test_text_without_secrets_is_returned_unchanged(self):
+        text = "No space left on device while writing the model cache"
+
+        assert runtime.redact_secrets(text, self.TOKEN) == text
+
+    def test_it_does_not_raise_without_a_token(self):
+        # The hooks call it with whatever `resolve_huggingface_token()` returned,
+        # which is `None` on an installation that configured no token at all.
+        assert runtime.redact_secrets("plain text", None) == "plain text"
+
+    def test_short_hf_prefixed_words_are_left_alone(self):
+        # The pattern requires at least eight characters after `hf_`, so an
+        # ordinary identifier is not mangled. Documented as a deliberate bound:
+        # loosening it would start rewriting exception texts that carry no secret,
+        # and a redacted message nobody can read is its own problem.
+        assert runtime.redact_secrets("failed to open hf_cache") == (
+            "failed to open hf_cache"
+        )
+
+    def test_the_reason_kept_in_the_negative_cache_is_redacted(self, monkeypatch):
+        """Redacted before it is *stored*, not only before it is logged.
+
+        The reason survives in `_FAILED_CLASSIFIER_MODELS` and
+        `classifier_load_error()` hands it to callers, which is a second way for it
+        to reach a log line — one that no test of the log itself would catch.
+        """
+        monkeypatch.setattr(runtime.runtime_log, "warning", lambda message: None)
+
+        def explode(task, model, token=None, **kwargs):
+            raise OSError(f"401 Client Error, token {self.TOKEN}")
+
+        fake_transformers(monkeypatch, explode)
+
+        with pytest.raises(OSError):
+            runtime.get_pipeline(A_MODEL, token=self.TOKEN)
+
+        reason = runtime.classifier_load_error(A_MODEL)
+        assert reason is not None
+        assert self.TOKEN not in reason
+
+
 class TestModelLabels:
     """Reading the labels a model can return, which is how a mapping is checked."""
 

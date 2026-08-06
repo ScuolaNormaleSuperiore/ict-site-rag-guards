@@ -100,11 +100,11 @@ Verified against the Hugging Face model cards on 2026-08-06:
 | `meta-llama/Llama-Prompt-Guard-2-22M` | Llama 4 Community License | gated, approval granted manually by Meta |
 | `deepset/deberta-v3-base-injection` | MIT | public |
 
-The **shipped default is a gated model**, so on an installation where nobody has
-arranged access the classifier does not load and the guard falls back to its
-built-in patterns alone. That is deliberate fail-open behaviour and it is
-reported, but it means the default configuration is not the one that works
-everywhere out of the box.
+The **shipped default model is gated**, but the classifier itself now ships
+disabled. A fresh installation therefore starts on the built-in patterns alone,
+with no warning and no Hugging Face dependency. If the classifier is enabled
+without arranged access, it fails open, the guard falls back to its built-in
+patterns alone, and the condition is reported in the log.
 
 The full licence picture for every model this plugin can run, including the
 offensive-input ones and what each licence implies, is in `README.md`, section

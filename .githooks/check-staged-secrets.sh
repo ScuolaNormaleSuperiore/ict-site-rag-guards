@@ -34,7 +34,35 @@ if [ -z "$added_lines" ]; then
 	exit 0
 fi
 
+# There is deliberately **no exemption mechanism**, per line or per path.
+#
+# One existed briefly on 2026-08-06, a `pragma: allowlist secret` marker, and it
+# was removed the same day with the tests that were its only reason to exist. The
+# reasoning is worth keeping, because the next person who needs to commit a line
+# that looks like a secret will reach for it again: an escape hatch in a secret
+# scan is a way to silence a real detection, and this one had no test left to
+# prove it stayed narrow.
+#
+# If a legitimate need does come back — a fixture, an example in documentation —
+# reintroduce it per line rather than per path, so the exemption sits next to the
+# value it covers and is visible in the diff a reviewer reads. Use
+# `detect-secrets`' own spelling, so the markers survive if that tool is ever
+# adopted, and add the tests that prove the exemption applies to one line only.
+
 # High-signal secret patterns only (to reduce false positives).
+#
+# The last one is quoted with $'...' and not '...', and that single character is
+# load-bearing: `\x27` is an ANSI-C escape that bash expands **only** inside
+# $'...'. Written in ordinary single quotes it reached grep literally, so the
+# character class meant {" \ x 2 7} instead of {" '} — which silently did two
+# things. It never matched a single-quoted value, the entire reason `\x27` was
+# there; and it stopped matching any value whose characters included x, 2, 7 or a
+# backslash, so a key made of digits slipped through while one made of letters
+# alone was caught. Found by tests/unit/test_git_hooks.py on 2026-08-06.
+#
+# No verbatim example is written here on purpose: this file is scanned by the very
+# patterns it defines, and a sample assignment in a comment would block every
+# commit that touches it.
 patterns=(
 	'-----BEGIN (RSA |EC |DSA |OPENSSH |PGP )?PRIVATE KEY-----'
 	'(AKIA|ASIA)[A-Z0-9]{16}'
@@ -43,12 +71,18 @@ patterns=(
 	'xox[baprs]-[A-Za-z0-9-]{10,}'
 	'sk-[A-Za-z0-9]{20,}'
 	'[A-Za-z][A-Za-z0-9+.-]*://[^[:space:]]+:[^[:space:]]+@[^[:space:]]+'
-	'(api[_-]?key|client[_-]?secret|access[_-]?token|refresh[_-]?token|password|passwd|pwd|secret)[[:space:]]*[:=][[:space:]]*["\x27][^"\x27]{8,}["\x27]'
+	$'(api[_-]?key|client[_-]?secret|access[_-]?token|refresh[_-]?token|password|passwd|pwd|secret)[[:space:]]*[:=][[:space:]]*["\x27][^"\x27]{8,}["\x27]'
 )
 
 found=0
 for pattern in "${patterns[@]}"; do
-	matches="$(grep -E -i -n "$pattern" <<< "$added_lines" 2>/dev/null || true)"
+	# `-e` is not optional here. The private-key pattern starts with `-----`, so
+	# without it grep reads the pattern as options and dies with
+	# `unknown option -- ---BEGIN ...`. The `2>/dev/null` then hid the message and
+	# `|| true` swallowed the exit code, so the most serious pattern in this list
+	# reported nothing and every commit carrying a private key passed the gate.
+	# Found by tests/unit/test_git_hooks.py on 2026-08-06.
+	matches="$(grep -E -i -n -e "$pattern" <<< "$added_lines" 2>/dev/null || true)"
 	if [ -n "$matches" ]; then
 		if [ "$found" -eq 0 ]; then
 			echo "[RAG-GUARDS pre-commit] Potential secret detected in staged changes:" >&2

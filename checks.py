@@ -17,7 +17,6 @@ Keeping this signature uniform across checks is what will later allow the
 checks to be iterated over, enabled or reordered from configuration without
 rewriting them.
 
-Reference: DEV/TODO/Workflow_RAG_Cheshire_Cat_AI_semplificato_v12.docx, Fasi 2, 5.
 """
 
 import re

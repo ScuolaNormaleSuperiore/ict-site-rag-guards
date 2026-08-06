@@ -15,19 +15,15 @@ The plugin ships **no model weights**. Its prompt-injection guard can be configu
 - Admin-configurable settings from the Cheshire Cat plugin panel
 - Testable split between pure decision logic and Cheshire Cat hook adapters
 - Architecture prepared for future RAG evidence checks and output guardrails
-- Optional use of Llama classifiers.
+- Optional use of Llama classifiers
 
 ## Current Status
 
-The plugin is work in progress.
+The plugin is a work in progress.
 
 Currently implemented:
 
-- maximum input length check
-- personal-data guard for e-mail, codice fiscale, IBAN and phone numbers
-- output personal-data guard on generated replies
-- prompt injection guard with a built-in detector plus an optional local classifier
-- offensive-input guard with a local multilingual classifier, shipped switched off
+- the guards listed in the summary table below
 - configurable Help Desk email
 - configurable static replies for over-long requests, personal data, output personal data, prompt injection and offensive content
 
@@ -39,12 +35,43 @@ The naming of guards is documented in [DOC/GuardTaxonomy.md](DOC/GuardTaxonomy.m
 - `category`: what kind of risk it addresses
 - `verdict`: which specific control fired
 
+## Guard Summary
+
+Quick reference of the guards currently implemented in the plugin. This is the
+fastest way to see what the plugin does today.
+
+| Stage | Category | Verdict | Hook | Type | What it does |
+| --- | --- | --- | --- | --- | --- |
+| `input` | `limits` | `message_length` | `fast_reply` | Python | Stops over-long user messages before retrieval and generation. |
+| `input` | `privacy` | `personal_data` | `fast_reply` | Regex + checksum + library | Stops user messages containing personal data such as e-mail addresses, phone numbers, codice fiscale or IBAN. |
+| `input` | `security` | `prompt_injection` | `fast_reply` | Regex + local classifier | Stops explicit prompt-injection attempts with built-in bilingual patterns and, optionally, with a local classifier. |
+| `input` | `tone` | `offensive_input` | `fast_reply` | Local classifier | Stops offensive or violent incoming messages with a local multilingual classifier when this optional guard is enabled. |
+| `output` | `privacy` | `output_personal_data` | `before_cat_sends_message` | Regex + checksum + library | Replaces a generated reply before delivery if it contains personal data. |
+
+## Architecture
+
+The plugin is split into a small number of focused parts:
+
+- `checks.py`: pure decision logic, with no imports from `cat`
+- `ict_site_rag_guards.py`: Cheshire Cat hooks, settings loading and log wiring
+- `classifier_runtime.py`: shared runtime support for local classifiers, including pipeline cache and negative cache on failed loads
+- `prompt_injection_classifier.py`: model-specific wrapper for the prompt-injection classifier
+- `offensive_input_classifier.py`: model-specific wrapper for the offensive-input classifier
+- `settings.py`: admin settings model and shipped defaults
+
+This keeps the rule logic testable on its own, while the hook layer stays thin
+and focused on the Cheshire Cat integration.
+
 ## Requirements
 
 - Cheshire Cat AI `1.9.2` on the `1.x` line
 - A website chatbot integration that sends user messages to Cheshire Cat AI
 
-The plugin is self-contained: it requires no companion plugin, and every third-party dependency it needs is declared in its own `requirements.txt`, which Cheshire Cat AI installs on activation. It currently declares `phonenumberslite` for phone-number validation and `transformers` plus `torch` for the optional local prompt-injection classifier.
+The plugin is self-contained: it requires no companion plugin, and every
+third-party dependency it needs is declared in its own `requirements.txt`,
+which Cheshire Cat AI installs on activation. It currently declares
+`phonenumberslite` for phone-number validation and `transformers` plus `torch`
+for the optional local classifiers.
 
 Sharing an installation with other plugins is supported: when one of its own checks does not trigger, a reply another plugin has already produced is passed through untouched.
 
@@ -90,141 +117,62 @@ read together in the form:
 - `Tone guard: offensive input classifier threshold`
 - `Tone guard: reply — offensive content detected`
 
-One setting is shipped **switched off**, and it is the only one:
-`Tone guard: block offensive incoming messages with local classifier`. It loads a
-second model into memory and adds one inference to every message that reaches it,
-and its precision on real help-desk traffic still has to be measured, so enabling
-it is an explicit decision. Everything else ships enabled.
+Two settings ship **switched off**:
+`Security guard: block prompt injection with local classifier`, so a first
+installation does not depend on a model download or on access to a gated
+repository; and `Tone guard: block offensive incoming messages with local
+classifier`, because it loads a second model into memory and adds one inference
+to every message that reaches it, and its precision on real help-desk traffic
+still has to be measured. Everything else ships enabled.
 
-The shipped default Help Desk address is a placeholder and should be replaced for real deployments.
+The shipped default Help Desk address is a placeholder and should be replaced
+for real deployments.
 
 ## How It Works
 
-The current implementation uses Cheshire Cat hooks to inspect the incoming message before the normal agent flow continues.
+The current implementation uses Cheshire Cat hooks at two points of the flow:
 
-If the message exceeds the configured length limit, the plugin returns a static reply immediately:
+- `fast_reply` for input-side guards that can stop a turn before retrieval and generation
+- `before_cat_sends_message` for the current output-side privacy guard
 
-- no retrieval
-- no LLM generation
-- no episodic storage for that refused message
+In practice:
 
-This behavior is implemented through a small hook layer in `ict_site_rag_guards.py` and pure decision logic in `checks.py`.
+- over-long messages are stopped immediately
+- incoming personal data is stopped immediately
+- prompt injection is stopped with built-in patterns and, optionally, with a local classifier
+- offensive input can also be stopped with a local multilingual classifier when that optional guard is enabled
+- generated replies containing personal data are replaced before delivery
 
-The same early-stop path is also used by the prompt injection guard. It first
-applies a conservative built-in detector for explicit override or reveal
-attempts, then optionally runs a local classifier. When either one trips, the
-plugin returns a static reply before retrieval or generation. A detailed
-description of the guard lives in `DOC/SecurityGuards.md`, including when a
-Hugging Face token is needed for gated classifier models.
+Detailed behavior of the classifier-based and output-side guards lives in:
 
-A further input check refuses offensive or violent messages, on the same
-early-stop path and with a local multilingual classifier. It runs **last**, so it
-only sees a message every other check let through, and one consequence is
-deliberate: a message that is both offensive and a prompt-injection attempt is
-reported as prompt injection, because an attack on the assistant is the more
-pertinent correction to give back. Two things set it apart from the other guards.
-Its threshold is compared against the **sum** of the classes that count as
-offensive for the selected model, not against a single score, so the same number
-means something stricter here than in the prompt injection guard. And it is the
-**only check shipped switched off**, because it loads a second model into memory
-and its precision on real help-desk traffic still has to be measured. A detailed
-description lives in `DOC/ToneGuards.md`.
+- [DOC/SecurityGuards.md](DOC/SecurityGuards.md)
+- [DOC/ToneGuards.md](DOC/ToneGuards.md)
+- [DOC/OutputGuards.md](DOC/OutputGuards.md)
 
-The plugin also inspects the generated answer just before delivery. If the
-reply contains personal data, it is replaced with a static fallback instead of
-being sent to the user. The input-side and output-side privacy guards now have
-separate detector settings, so an installation can choose to block personal
-data on input, on output, on both, or on neither. Both sides use the same
-detector family — e-mail, phone numbers, codice fiscale and IBAN — but they
-have distinct configuration, verdicts and reply texts because they act at
-different points of the flow. A detailed description of the current output-side
-behavior lives in `DOC/OutputGuards.md`.
+## Guard Order
 
-### What the log records
+The order of the input-side checks is part of the behavior, not an
+implementation detail. The current order is:
 
-A guardrail that stops working raises no error: the chatbot simply keeps
-answering unguarded. The log is what makes that visible, so it answers two
-different questions.
+1. `message_length`
+2. `prompt_injection` patterns
+3. `personal_data`
+4. `prompt_injection` classifier
+5. `offensive_input`
 
-**Which guards are active.** One line when the plugin starts guarding, and again
-whenever the configuration changes — not on every message:
+This means:
 
-```
-[ict-site-rag-guards] guards active: limits(max 1000 chars), privacy(input=email+codice_fiscale+iban+phone, input_region=IT, output=email, output_region=IT), security(patterns+classifier meta-llama/Llama-Prompt-Guard-2-86M@0.85), tone(disabled)
-```
+- cheap deterministic checks run before local classifiers
+- a message containing personal data is stopped before classifier-based checks
+- a message that is both offensive and a prompt-injection attempt is reported as
+  `prompt_injection`, because that guard runs first and gives the more
+  pertinent correction
 
-When a whole family is switched off, the same line is a `WARNING` and names what
-is left uncovered, because that is the state in which the chatbot is exposed and
-nothing else reports it:
+### Logging
 
-```
-[ict-site-rag-guards] guards active: limits(max 500 chars), privacy(disabled), security(patterns+classifier …), tone(disabled); no guard covers: privacy
-```
-
-`tone(disabled)` is in both examples and in neither warning, which is deliberate.
-The `no guard covers` field answers the narrower question «was a protection this
-plugin provides by default switched off», and the tone guard ships off. A
-`WARNING` on every fresh installation would teach everyone to skip this line,
-including on the day privacy really is disabled — so the state is reported in the
-text and does not raise the severity. Once the tone guard is enabled and its
-model fails to load, that *is* a warning, because then the category is uncovered
-without anyone having chosen it.
-
-**Why a request was refused.** One `INFO` line per block, naming the guard that
-stopped it, so a refusal can be told apart from a normal answer and from another
-plugin's block:
-
-```
-[ict-site-rag-guards] input blocked, stage='input', category='privacy', verdict='personal_data', detected=email+phone (mobile), latency_ms=0.14; no retrieval, no generation, nothing stored in memory
-```
-
-For the current output guard:
-
-```
-[ict-site-rag-guards] output blocked, stage='output', category='privacy', verdict='output_personal_data', detected=email; generated reply replaced before delivery
-```
-
-And for the offensive-input guard, when it is enabled:
-
-```
-[ict-site-rag-guards] input blocked, stage='input', category='tone', verdict='offensive_input', detector=classifier, model=IMSyPP/hate_speech_multilingual, label=violent, score=0.999, threshold=0.60, latency_ms=79.2; no retrieval, no generation, nothing stored in memory
-```
-
-`stage`, `category`, and `verdict` are three separate fields by design:
-
-- `stage` says where the guard acted, currently `input` or `output`
-- `category` says the guard family — `limits`, `privacy`, `security`, `tone`
-- `verdict` says the specific control that tripped
-
-The fields after them describe the violation: the length against the limit,
-which detectors matched, or which injection pattern and classifier score fired.
-
-On the offensive-input line, `score` needs one caution: it is the **sum** of the
-classes that count as offensive for that model, not the score of the single class
-named in `label`. Those classes are mutually exclusive, so a message can be split
-between them and be certainly offensive without any one of them being high. That
-is why this guard's threshold is lower than the prompt-injection one — the two
-numbers do not measure the same thing.
-
-A message that passes writes no *verdict* line: the guards stay silent when they
-find nothing. Set `CCAT_LOG_LEVEL=DEBUG` to get one line per allowed message,
-which is the level to use when diagnosing a specific request:
-
-```
-[ict-site-rag-guards] input allowed, stage='input', checks=length+injection_patterns+personal_data+injection_classifier, latency_ms=0.03
-```
-
-One exception at `INFO`, while the prompt-injection classifier is being
-evaluated: it reports reusing its in-memory pipeline, so with the classifier
-enabled a clean message does produce one line. Disable the classifier, or wait
-for that line to be demoted to `DEBUG`, if a silent `INFO` log matters more than
-observing model reuse.
-
-The refused message itself is never logged, on any path. That is deliberate: on
-the privacy guard it would defeat the check it is reporting. One consequence is
-worth knowing, because no plugin can change it — Cheshire Cat itself logs every
-incoming message before any plugin runs, so log retention remains a
-data-protection question independent of this plugin.
+For a detailed reference of the log lines emitted by the plugin — active-guard
+announcements, block lines, allowed-path debug lines, and logging boundaries —
+see [DOC/Logging.md](DOC/Logging.md).
 
 ## Development
 
@@ -238,7 +186,8 @@ Main files:
 - `ict_site_rag_guards.py`: Cheshire Cat hooks and settings loading
 - `tests/`: the test suite, described in [DOC/TestingCode.md](DOC/TestingCode.md)
 
-Project-specific architecture notes, roadmap, and development guidance live under `DEV/AGENTS/` and `DEV/TODO/`.
+Project-specific architecture notes and development guidance live under
+`DEV/AGENTS/`.
 
 ## Testing
 
@@ -254,7 +203,20 @@ Run the full suite:
 python run-tests.py
 ```
 
-These are the only two commands needed to run the tests. Everything else about testing — the test layout, which tests need the Cheshire Cat container, how the runner behaves, and what is verified manually — is in [DOC/TestingCode.md](DOC/TestingCode.md).
+These are the only two commands needed to run the tests. Everything else about
+testing — the test layout, which tests need the Cheshire Cat container, how the
+runner behaves, and what is verified manually — is in
+[DOC/TestingCode.md](DOC/TestingCode.md).
+
+## Related Docs
+
+- [DOC/GuardTaxonomy.md](DOC/GuardTaxonomy.md): taxonomy of `stage`, `category` and `verdict`
+- [DOC/ClassifierCache.md](DOC/ClassifierCache.md): how the local-classifier cache and negative cache work
+- [DOC/SecurityGuards.md](DOC/SecurityGuards.md): prompt-injection guard details
+- [DOC/ToneGuards.md](DOC/ToneGuards.md): offensive-input guard details
+- [DOC/OutputGuards.md](DOC/OutputGuards.md): output-side privacy guard details
+- [DOC/Logging.md](DOC/Logging.md): detailed log reference
+- [DOC/TestingCode.md](DOC/TestingCode.md): test layout, runners and manual checks
 
 ## Packaging
 
@@ -274,9 +236,19 @@ The code in this repository is released under **GNU General Public License v3.0 
 
 ### The models are not part of it
 
-This plugin distributes **no model weights**. The release package contains ten files — Python modules, `plugin.json`, `README.md`, `LICENSE`, `requirements.txt` — and nothing else. Every classifier model is downloaded at runtime, from Hugging Face, by the person who installs and configures the plugin, and each one carries its own licence which that person accepts directly with its publisher.
+This plugin distributes **no model weights**. The release package contains ten
+files — Python modules, `plugin.json`, `README.md`, `LICENSE`,
+`requirements.txt` — and nothing else. Every classifier model is downloaded at
+runtime, from Hugging Face, by the person who installs and configures the
+plugin, and each one carries its own licence which that person accepts directly
+with its publisher.
 
-That separation is what keeps the arrangement clean. The GPL governs this code; it does not and cannot govern weights it never ships. **Never add model weights to the release package**: some of the models below are distributed under licences that impose use restrictions, and GPLv3 section 10 forbids adding restrictions to conveyed material — bundling them would create a genuine incompatibility where today there is none.
+That separation is what keeps the arrangement clean. The GPL governs this code;
+it does not and cannot govern weights it never ships. **Never add model
+weights to the release package**: some of the models below are distributed
+under licences that impose use restrictions, and GPLv3 section 10 forbids
+adding restrictions to conveyed material — bundling them would create a genuine
+incompatibility where today there is none.
 
 ### Built with Llama
 
@@ -284,11 +256,18 @@ The prompt-injection guard can be configured to run Meta's Llama Prompt Guard 2.
 
 > **Llama is licensed under the Llama Community License, Copyright © Meta Platforms, Inc. All Rights Reserved.**
 
-The applicable version, read from the model card on 2026-08-06, is the **Llama 4 Community License Agreement** (`license_name: llama4`). Both Meta models are **gated**: access is granted manually by Meta after the request is accepted, so using them requires accepting Meta's terms on the model page and authenticating at runtime. See [DOC/SecurityGuards.md](DOC/SecurityGuards.md) for the operational steps.
+The applicable version, read from the model card on 2026-08-06, is the
+**Llama 4 Community License Agreement** (`license_name: llama4`). Both Meta
+models are **gated**: access is granted manually by Meta after the request is
+accepted, so using them requires accepting Meta's terms on the model page and
+authenticating at runtime. See [DOC/SecurityGuards.md](DOC/SecurityGuards.md)
+for the operational steps.
 
 ### Licence of each supported model
 
-Verified against the Hugging Face model cards on 2026-08-06. Check them again before a release: a publisher can change a licence, and this table is a snapshot rather than a promise.
+Verified against the Hugging Face model cards on 2026-08-06. Check them again
+before a release: a publisher can change a licence, and this table is a
+snapshot rather than a promise.
 
 | Model | Guard | Licence | Gated |
 | --- | --- | --- | --- |
@@ -301,10 +280,23 @@ Verified against the Hugging Face model cards on 2026-08-06. Check them again be
 
 Two entries deserve attention before you enable them:
 
-- **The two Meta models are not free software.** The Llama Community License is not an open-source licence: it carries an acceptable-use policy, a monthly-active-users clause and naming requirements. Nothing about that conflicts with this plugin's GPLv3 as long as the weights stay out of the package, but an installation that enables them has accepted terms the GPL does not grant.
-- **`textdetox/bert-multilingual-toxicity-classifier` is OpenRAIL++**, which permits redistribution but attaches behavioural use restrictions that must be passed on downstream. It is the only offensive-input model of the three that is not plainly permissive.
+- **The two Meta models are not free software.** The Llama Community License
+  is not an open-source licence: it carries an acceptable-use policy, a
+  monthly-active-users clause and naming requirements. Nothing about that
+  conflicts with this plugin's GPLv3 as long as the weights stay out of the
+  package, but an installation that enables them has accepted terms the GPL
+  does not grant.
+- **`textdetox/bert-multilingual-toxicity-classifier` is OpenRAIL++**, which
+  permits redistribution but attaches behavioural use restrictions that must be
+  passed on downstream. It is the only offensive-input model of the three that
+  is not plainly permissive.
 
-The two shipped defaults sit on opposite sides of this: the tone guard defaults to an MIT model, the prompt-injection guard defaults to a gated Meta one. If a deployment needs to avoid non-free licences entirely, both guards have a permissive option — `deepset/deberta-v3-base-injection` (MIT) and the default `IMSyPP/hate_speech_multilingual` (MIT) — selectable from the admin panel with no code change.
+The two shipped defaults sit on opposite sides of this: the tone guard defaults
+to an MIT model, the prompt-injection guard defaults to a gated Meta one. If a
+deployment needs to avoid non-free licences entirely, both guards have a
+permissive option — `deepset/deberta-v3-base-injection` (MIT) and the default
+`IMSyPP/hate_speech_multilingual` (MIT) — selectable from the admin panel with
+no code change.
 
 ### Runtime dependencies
 

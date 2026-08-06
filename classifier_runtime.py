@@ -22,6 +22,7 @@ offensive input.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 try:
@@ -46,6 +47,33 @@ _FAILED_CLASSIFIER_MODELS: dict[str, str] = {}
 
 class ClassifierUnavailable(RuntimeError):
     """A model that already failed to load and is not being retried."""
+
+
+REDACTED = "***redacted***"
+
+# Any token-shaped string. Needed on top of replacing the token we were handed,
+# because a credential can reach an exception text from somewhere we never saw it:
+# the library's own cache file, or an environment variable read by
+# `huggingface_hub` rather than by us.
+_TOKEN_SHAPED = re.compile(r"hf_[A-Za-z0-9]{8,}")
+
+
+def redact_secrets(text: str, token: str | None = None) -> str:
+    """Remove anything credential-shaped from text on its way to the log.
+
+    This exists because the plugin interpolates **third-party exception messages**
+    into the warnings it writes, and their content is not ours to control: an HTTP
+    error from the Hub can carry a request URL or an authorization header. Auditing
+    every version of every dependency for what it puts in an exception is not a
+    strategy; redacting on the way out is.
+
+    Two passes, and both are needed. The exact value catches a token that does not
+    look like one — `HF_TOKEN` can hold anything. The pattern catches one we were
+    never given.
+    """
+    if token:
+        text = text.replace(token, REDACTED)
+    return _TOKEN_SHAPED.sub(f"hf_{REDACTED}", text)
 
 
 # What a load failure looks like when the cause is authorisation rather than a
@@ -151,10 +179,14 @@ def get_pipeline(model_name: str, token: str | None = None, **pipeline_kwargs):
             **pipeline_kwargs,
         )
     except Exception as error:
-        _FAILED_CLASSIFIER_MODELS[model_name] = str(error)
+        # Redacted before it is stored, not only before it is logged: the reason is
+        # kept in the negative cache and handed to callers by
+        # `classifier_load_error()`, which is another way for it to reach a log.
+        reason = redact_secrets(str(error), token)
+        _FAILED_CLASSIFIER_MODELS[model_name] = reason
         runtime_log.warning(
             "[ict-site-rag-guards] failed to load classifier "
-            f"model {model_name}: {error}; it will not be retried until the "
+            f"model {model_name}: {reason}; it will not be retried until the "
             f"plugin reloads.{access_remediation(model_name, error)}"
         )
         raise

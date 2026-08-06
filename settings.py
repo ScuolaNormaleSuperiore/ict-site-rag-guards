@@ -49,7 +49,7 @@ DEFAULT_HELP_DESK_EMAIL = "helpdesk@example.org"
 
 # Bilingual in a single text, deliberately: the plugin does not detect the
 # language of incoming messages, so it cannot pick one. A test asserts both
-# languages are present. See DEV/TODO/RagGuardsPlan.md, Fase 2.
+# languages are present.
 DEFAULT_MESSAGE_TOO_LONG = (
     "La tua richiesta è troppo lunga per essere elaborata. "
     "Riformulala in modo più breve, indicando solo il servizio ICT "
@@ -308,12 +308,14 @@ class IctSiteRagGuardsSettings(BaseModel):
     )
 
     detect_prompt_injection_classifier: bool = Field(
-        default=True,
+        default=False,
         title="Security guard: block prompt injection with local classifier",
         description=(
             "Runs a local text-classification model after the custom detector. "
-            "If loading or inference fails, the message continues and the "
-            "plugin logs a warning."
+            "Ships switched off so a first installation does not depend on a "
+            "model download or on access to a gated repository. If loading or "
+            "inference fails after it is enabled, the message continues and "
+            "the plugin logs a warning."
         ),
     )
 
