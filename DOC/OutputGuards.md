@@ -89,4 +89,32 @@ As on input:
 - only personal-data leakage is implemented on output
 - no groundedness or citation-consistency check is active
 - no output language check is active
+- no register check on the answer is active
 - the fallback is a full replacement, not a local redaction
+
+## Verifications deliberately left outside v1
+
+The three checks absent from this iteration are **decisions, not omissions**, and
+each one is tracked somewhere so it does not have to be rediscovered. Do not
+re-add them to a plan as missing work.
+
+| Check | Intended taxonomy | Where it is tracked |
+| --- | --- | --- |
+| Answer language matches the question | `output` / `quality` / `output_language_mismatch` | An open issue in `DEV/AGENTS/ISSUES_TODO.md`, plus the manual checklist in `DOC/TestingCode.md`. Deliberately a **final verification**, not a guard |
+| Groundedness and citation consistency | `output` / `quality` / `output_groundedness` | An open issue in `DEV/AGENTS/ISSUES_TODO.md`; architectural alternatives in `DEV/TODO/ResponseConsistencyChecksPlan.md` |
+| Register of the answer | `output` / `tone` / `output_tone` | Planned for Fase 5 in `DEV/TODO/RagGuardsPlan.md`. Its category is `tone`, the same as the input offensive check — see `DOC/ToneGuards.md` |
+
+Why the language check is a verification rather than a guard is worth knowing,
+because it looks like an easy win: making the *model* answer in the language of
+the question is a prompt instruction, already handled outside this plugin, and a
+detector could only contradict it. Measured on the installed instance,
+`langdetect` returns Afrikaans for `password` and German for `VPN`, both above
+0.999 confidence. On a full answer the text is long enough to classify reliably,
+which is why the door is left open — but the first step is confirming on the live
+instance that the prompt instruction is honoured, not writing a check.
+
+The groundedness one is the opposite case: it is the **highest-value control still
+missing** from the pipeline, because it is the only one that would look at what
+the model actually produced against the evidence it was given. It is deferred for
+a concrete reason — it needs a citation format to compare against, and that
+format is not defined yet.
