@@ -210,6 +210,7 @@ runner behaves, and what is verified manually — is in
 
 ## Related Docs
 
+- [DOC/ClassifierLabels.md](DOC/ClassifierLabels.md): how classifier labels are mapped, verified, and used in decisions
 - [DOC/GuardTaxonomy.md](DOC/GuardTaxonomy.md): taxonomy of `stage`, `category` and `verdict`
 - [DOC/ClassifierCache.md](DOC/ClassifierCache.md): how the local-classifier cache and negative cache work
 - [DOC/SecurityGuards.md](DOC/SecurityGuards.md): prompt-injection guard details
