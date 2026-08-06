@@ -31,13 +31,16 @@ from checks import (  # noqa: E402
     DEFAULT_MAX_MESSAGE_CHARS,
     STAGE_BY_VERDICT,
     STAGE_INPUT,
+    STAGE_OUTPUT,
     UNCATEGORIZED,
     UNKNOWN_STAGE,
     VERDICT_MESSAGE_LENGTH,
+    VERDICT_OUTPUT_PERSONAL_DATA,
     VERDICT_PERSONAL_DATA,
     VERDICT_PROMPT_INJECTION,
     category_of,
     check_length,
+    check_output_personal_data,
     check_personal_data,
     check_prompt_injection,
     extract_text,
@@ -71,12 +74,12 @@ def config(**overrides):
     """A stand-in for the settings model, exposing what the checks read."""
     values = {
         "max_message_chars": DEFAULT_MAX_MESSAGE_CHARS,
-        "detect_email": True,
-        "detect_codice_fiscale": True,
-        "detect_iban": True,
-        "detect_phone": True,
+        "detect_input_email": True,
+        "detect_input_codice_fiscale": True,
+        "detect_input_iban": True,
+        "detect_input_phone": True,
         "help_desk_email": HELP_DESK,
-        "phone_region": "IT",
+        "input_phone_region": "IT",
         "detect_prompt_injection_custom": True,
     }
     values.update(overrides)
@@ -249,6 +252,20 @@ class TestCheckPersonalData:
         assert check_personal_data(
             f"il mio cf e {VALID_CODICE_FISCALE.lower()}"
         ) == VERDICT_PERSONAL_DATA
+
+
+class TestCheckOutputPersonalData:
+    def test_output_personal_data_uses_a_different_verdict(self):
+        assert check_output_personal_data("scrivimi a mario.rossi@sns.it") == (
+            VERDICT_OUTPUT_PERSONAL_DATA
+        )
+
+    def test_a_clean_output_passes(self):
+        assert check_output_personal_data("Come attivo la VPN?") is None
+
+    def test_the_help_desk_address_is_still_allowed_on_output(self):
+        message = f"Per assistenza scrivi a {HELP_DESK}"
+        assert check_output_personal_data(message, allowed_email=HELP_DESK) is None
 
 
 class TestCheckPromptInjection:
@@ -486,6 +503,7 @@ class TestVerdictsAndCategories:
         [
             (VERDICT_MESSAGE_LENGTH, CATEGORY_LIMITS),
             (VERDICT_PERSONAL_DATA, CATEGORY_PRIVACY),
+            (VERDICT_OUTPUT_PERSONAL_DATA, CATEGORY_PRIVACY),
             (VERDICT_PROMPT_INJECTION, CATEGORY_SECURITY),
         ],
     )
@@ -497,9 +515,19 @@ class TestVerdictsAndCategories:
         # able to raise inside the hook that runs before everything else.
         assert category_of("verdict_never_defined") == UNCATEGORIZED
 
-    @pytest.mark.parametrize("verdict", ALL_VERDICTS)
-    def test_stage_of_returns_input_for_every_current_verdict(self, verdict):
-        assert stage_of(verdict) == STAGE_INPUT
+    @pytest.mark.parametrize(
+        "verdict, expected",
+        [
+            (VERDICT_MESSAGE_LENGTH, STAGE_INPUT),
+            (VERDICT_PERSONAL_DATA, STAGE_INPUT),
+            (VERDICT_OUTPUT_PERSONAL_DATA, STAGE_OUTPUT),
+            (VERDICT_PROMPT_INJECTION, STAGE_INPUT),
+        ],
+    )
+    def test_stage_of_returns_the_expected_stage_for_every_verdict(
+        self, verdict, expected
+    ):
+        assert stage_of(verdict) == expected
 
     def test_an_unknown_verdict_has_an_unknown_stage_instead_of_raising(self):
         assert stage_of("verdict_never_defined") == UNKNOWN_STAGE

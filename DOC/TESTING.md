@@ -85,3 +85,27 @@ Verification against a real instance is currently manual: activate the plugin, s
 This tier matters because it catches what the other two cannot. The interaction with the `Rate Limiter` plugin is the case in point: its checks used to intercept messages before this plugin ever saw them, and nothing in the code of either plugin showed it. The hook priority now settles who answers, and a unit test guards the priority, but the ordering itself is only ever confirmed on a running instance.
 
 The same tier is where another plugin's side effects show up. Above its own `max_prompt_length`, Rate Limiter still records an infraction and suspends the user for 5, 15 or 60 minutes, silently blocking their next legitimate messages, even though the reply delivered is this plugin's. No test can see that either.
+
+### Manual check for the current output privacy guard
+
+One concrete live check is now worth keeping in the checklist, because it
+exercises the new `before_cat_sends_message` path rather than the input-side
+`fast_reply` path.
+
+Suggested procedure:
+
+1. Ensure the relevant output detector is enabled in the admin panel, for example `Output privacy guard: block e-mail addresses`.
+2. If you want to test the output path in isolation, disable the corresponding input detector first, for example `Input privacy guard: block e-mail addresses`, so the turn is not stopped on `fast_reply`.
+3. Ask a benign ICT question that is likely to make the model echo personal data in the answer, for example by explicitly requesting a reply that repeats an e-mail address or a phone number.
+4. Confirm that the user does **not** receive the generated answer containing the data, but the configured static output-side fallback instead.
+5. Confirm in `docker compose logs -f cheshire-cat-core` that the block line is the output-side one:
+
+```text
+[ict-site-rag-guards] output blocked, stage='output', category='privacy', verdict='output_personal_data', ...
+```
+
+6. Repeat once with the relevant output detector disabled and confirm that the reply is no longer replaced by this plugin.
+
+This check matters because only a running instance proves that the hook is
+actually intercepting the final outgoing message object at the right point in
+the Cheshire Cat flow.

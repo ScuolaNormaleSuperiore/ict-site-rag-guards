@@ -7,6 +7,7 @@ It adds deterministic and configurable guardrails around the normal RAG flow so 
 ## Features
 
 - Input guardrails for message validation before generation
+- Output guardrail for personal-data leakage before delivery
 - Static fallback replies for blocked requests
 - Admin-configurable settings from the Cheshire Cat plugin panel
 - Testable split between pure decision logic and Cheshire Cat hook adapters
@@ -20,11 +21,12 @@ Currently implemented:
 
 - maximum input length check
 - personal-data guard for e-mail, codice fiscale, IBAN and phone numbers
+- output personal-data guard on generated replies
 - prompt injection guard with a built-in detector plus an optional local classifier
 - configurable Help Desk email
-- configurable static replies for over-long requests, personal data and prompt injection
+- configurable static replies for over-long requests, personal data, output personal data and prompt injection
 
-Planned next steps include additional input checks, evidence sufficiency gating, prompt policy, output checks, and telemetry.
+Planned next steps include additional input checks, prompt policy, further output checks, and telemetry.
 
 The naming of guards is documented in [DOC/GuardTaxonomy.md](DOC/GuardTaxonomy.md). The plugin keeps three axes separate:
 
@@ -60,12 +62,18 @@ read together in the form:
 - `Help Desk e-mail`
 - `Limits guard: maximum message length (characters)`
 - `Limits guard: reply — message too long`
-- `Privacy guard: block e-mail addresses`
-- `Privacy guard: block codice fiscale`
-- `Privacy guard: block IBAN`
-- `Privacy guard: block phone numbers`
-- `Privacy guard: region for phone numbers written without a prefix`
-- `Privacy guard: reply — personal data detected`
+- `Input privacy guard: block e-mail addresses`
+- `Input privacy guard: block codice fiscale`
+- `Input privacy guard: block IBAN`
+- `Input privacy guard: block phone numbers`
+- `Input privacy guard: region for phone numbers written without a prefix`
+- `Input privacy guard: reply — personal data detected`
+- `Output privacy guard: block e-mail addresses`
+- `Output privacy guard: block codice fiscale`
+- `Output privacy guard: block IBAN`
+- `Output privacy guard: block phone numbers`
+- `Output privacy guard: region for phone numbers written without a prefix`
+- `Output privacy guard: reply — outgoing personal data detected`
 - `Security guard: block explicit prompt injection patterns`
 - `Security guard: block prompt injection with local classifier`
 - `Security guard: prompt injection classifier model`
@@ -94,6 +102,16 @@ plugin returns a static reply before retrieval or generation. A detailed
 description of the guard lives in `DOC/SecurityGuards.md`, including when a
 Hugging Face token is needed for gated classifier models.
 
+The plugin also inspects the generated answer just before delivery. If the
+reply contains personal data, it is replaced with a static fallback instead of
+being sent to the user. The input-side and output-side privacy guards now have
+separate detector settings, so an installation can choose to block personal
+data on input, on output, on both, or on neither. Both sides use the same
+detector family — e-mail, phone numbers, codice fiscale and IBAN — but they
+have distinct configuration, verdicts and reply texts because they act at
+different points of the flow. A detailed description of the current output-side
+behavior lives in `DOC/OutputGuards.md`.
+
 ### What the log records
 
 A guardrail that stops working raises no error: the chatbot simply keeps
@@ -104,7 +122,7 @@ different questions.
 whenever the configuration changes — not on every message:
 
 ```
-[ict-site-rag-guards] guards active: limits(max 1000 chars), privacy(email+codice_fiscale+iban+phone, region=IT), security(patterns+classifier meta-llama/Llama-Prompt-Guard-2-86M@0.85)
+[ict-site-rag-guards] guards active: limits(max 1000 chars), privacy(input=email+codice_fiscale+iban+phone, input_region=IT, output=email, output_region=IT), security(patterns+classifier meta-llama/Llama-Prompt-Guard-2-86M@0.85)
 ```
 
 When a whole family is switched off, the same line is a `WARNING` and names what
@@ -123,9 +141,16 @@ plugin's block:
 [ict-site-rag-guards] input blocked, stage='input', category='privacy', verdict='personal_data', detected=email+phone (mobile), latency_ms=0.14; no retrieval, no generation, nothing stored in memory
 ```
 
+For the current output guard:
+
+```
+[ict-site-rag-guards] output blocked, stage='output', category='privacy', verdict='output_personal_data', detected=email; generated reply replaced before delivery
+```
+
 `stage`, `category`, and `verdict` are three separate fields by design:
 
 - `stage` says where the guard acted, currently `input`
+- `stage` says where the guard acted, currently `input` or `output`
 - `category` says the guard family — `limits`, `privacy`, `security`
 - `verdict` says the specific control that tripped
 

@@ -63,6 +63,7 @@ def reset_classifier_caches():
 # The @hook decorator replaces the function with a CatHook object, so the
 # callable under test is reached through `.function`.
 guard_input_message = guards.guard_input_message.function
+guard_output_message = guards.guard_output_message.function
 
 # The priority the Rate Limiter plugin gets from a bare @hook decorator.
 OTHER_PLUGIN_DEFAULT_PRIORITY = 1
@@ -95,17 +96,28 @@ def verdict_of(cat):
     return getattr(cat.working_memory, guards.VERDICT_ATTRIBUTE, "ATTRIBUTE MISSING")
 
 
+def deliver(cat, text, message=None):
+    """Simulate the outgoing answer reaching `before_cat_sends_message`."""
+    outgoing = (
+        types.SimpleNamespace(text=text, why={"mocked": True})
+        if message is None
+        else message
+    )
+    return guard_output_message(outgoing, cat)
+
+
 class TestHookRegistration:
     def test_hooks_are_bound_to_the_core_hook_names(self):
         # The function names are ours; the names the core dispatches on are not.
         assert guards.guard_input_message.name == "fast_reply"
+        assert guards.guard_output_message.name == "before_cat_sends_message"
 
     def test_input_guard_runs_after_the_other_plugins(self):
         # The whole independence from Rate Limiter rests on this comparison:
         # hooks are piped in descending priority and the last reply wins.
         assert guards.guard_input_message.priority < OTHER_PLUGIN_DEFAULT_PRIORITY
 
-    def test_the_plugin_registers_exactly_one_flow_hook(self):
+    def test_the_plugin_registers_the_expected_flow_hooks(self):
         # `agent_fast_reply` was registered for the Fase 3 evidence gate and
         # removed with it: a hook that answers nothing claims a behaviour the
         # plugin does not have. This fails if one is added back without a check
@@ -116,7 +128,7 @@ class TestHookRegistration:
             if hasattr(value, "name") and hasattr(value, "priority")
         }
 
-        assert registered == {"fast_reply"}
+        assert registered == {"fast_reply", "before_cat_sends_message"}
 
     def test_settings_model_is_registered_under_the_name_the_core_looks_up(self):
         # The core collects @plugin overrides into a dict keyed by function name
@@ -134,6 +146,13 @@ class TestHookRegistration:
             "help_desk_email",
             "max_message_chars",
             "message_too_long",
+            "detect_input_email",
+            "detect_input_phone",
+            "input_phone_region",
+            "detect_output_email",
+            "detect_output_phone",
+            "output_phone_region",
+            "output_personal_data_detected",
             "prompt_injection_detected",
             "huggingface_token",
         }
@@ -274,7 +293,7 @@ class TestPersonalDataGuard:
         )
 
     def test_detectors_can_be_disabled_from_the_settings(self):
-        cat = make_cat({"detect_email": False})
+        cat = make_cat({"detect_input_email": False})
 
         assert "output" not in send(cat, "scrivimi a mario.rossi@sns.it")
 
@@ -306,16 +325,85 @@ class TestPersonalDataGuard:
         assert "output" in send(cat, "Chiamatemi allo 050 509111")
 
     def test_the_configured_region_is_honoured(self):
-        cat = make_cat({"phone_region": "US"})
+        cat = make_cat({"input_phone_region": "US"})
 
         assert "output" not in send(cat, "Chiamatemi allo 050 509111")
 
     def test_an_invalid_region_is_rejected_by_the_settings_model(self):
         # Falling back to the defaults keeps the detector working, rather than
         # leaving it silently finding nothing.
-        cat = make_cat({"phone_region": "Italia"})
+        cat = make_cat({"input_phone_region": "Italia"})
 
-        assert guards.load_settings(cat).phone_region == checks.DEFAULT_PHONE_REGION
+        assert guards.load_settings(cat).input_phone_region == checks.DEFAULT_PHONE_REGION
+
+
+class TestOutputPersonalDataGuard:
+    def test_replaces_an_outgoing_reply_that_carries_personal_data(self):
+        cat = make_cat()
+
+        result = deliver(cat, "scrivimi a mario.rossi@sns.it")
+
+        assert result.text != "scrivimi a mario.rossi@sns.it"
+        assert settings_module.DEFAULT_HELP_DESK_EMAIL in result.text
+
+    def test_records_the_output_personal_data_verdict(self):
+        cat = make_cat()
+
+        deliver(cat, "Il mio IBAN è IT60X0542811101000000123456")
+
+        assert verdict_of(cat) == checks.VERDICT_OUTPUT_PERSONAL_DATA
+
+    def test_lets_a_clean_reply_through_unchanged(self):
+        cat = make_cat()
+        message = types.SimpleNamespace(text="Come attivo la VPN?", why={"mocked": True})
+
+        assert deliver(cat, "Come attivo la VPN?", message) is message
+        assert verdict_of(cat) == "ATTRIBUTE MISSING"
+
+    def test_the_configured_help_desk_address_is_not_personal_data_on_output(self):
+        cat = make_cat({"help_desk_email": "ict@example.org"})
+
+        result = deliver(cat, "Per assistenza scrivi a ict@example.org")
+
+        assert result.text == "Per assistenza scrivi a ict@example.org"
+
+    def test_the_output_guard_can_be_disabled(self):
+        cat = make_cat(
+            {
+                "detect_output_email": False,
+                "detect_output_codice_fiscale": False,
+                "detect_output_iban": False,
+                "detect_output_phone": False,
+            }
+        )
+
+        result = deliver(cat, "scrivimi a mario.rossi@sns.it")
+
+        assert result.text == "scrivimi a mario.rossi@sns.it"
+
+    def test_the_replacement_clears_the_previous_why_metadata(self):
+        cat = make_cat()
+        message = types.SimpleNamespace(
+            text="scrivimi a mario.rossi@sns.it", why={"sources": ["s1"]}
+        )
+
+        replaced = deliver(cat, message.text, message)
+
+        assert replaced.why is None
+
+    def test_the_output_block_is_logged_without_the_original_text(self, monkeypatch):
+        cat = make_cat()
+        lines = []
+        monkeypatch.setattr(guards.log, "info", lines.append)
+
+        deliver(cat, "scrivimi a mario.rossi@sns.it")
+
+        assert any(
+            f"stage='{checks.STAGE_OUTPUT}'" in line
+            and f"verdict='{checks.VERDICT_OUTPUT_PERSONAL_DATA}'" in line
+            for line in lines
+        )
+        assert all("mario.rossi" not in line for line in lines)
 
 
 class TestPromptInjectionGuard:
@@ -713,10 +801,14 @@ class TestGuardAnnouncement:
             ({"max_message_chars": 0}, "limits"),
             (
                 {
-                    "detect_email": False,
-                    "detect_codice_fiscale": False,
-                    "detect_iban": False,
-                    "detect_phone": False,
+                    "detect_input_email": False,
+                    "detect_input_codice_fiscale": False,
+                    "detect_input_iban": False,
+                    "detect_input_phone": False,
+                    "detect_output_email": False,
+                    "detect_output_codice_fiscale": False,
+                    "detect_output_iban": False,
+                    "detect_output_phone": False,
                 },
                 "privacy",
             ),
@@ -757,6 +849,8 @@ class TestGuardAnnouncement:
         summary, uncovered = guards.active_guards_summary(settings)
 
         assert "meta-llama/Llama-Prompt-Guard-2-86M@0.85" in summary
+        assert "input=email+codice_fiscale+iban+phone" in summary
+        assert "output=email+codice_fiscale+iban+phone" in summary
         assert uncovered == ()
 
 
@@ -912,10 +1006,10 @@ class TestAllowedPathLogging:
         cat = make_cat(
             {
                 "max_message_chars": 0,
-                "detect_email": False,
-                "detect_codice_fiscale": False,
-                "detect_iban": False,
-                "detect_phone": False,
+                "detect_input_email": False,
+                "detect_input_codice_fiscale": False,
+                "detect_input_iban": False,
+                "detect_input_phone": False,
                 "detect_prompt_injection_custom": False,
                 "detect_prompt_injection_classifier": False,
             }
@@ -1017,6 +1111,11 @@ class TestSettingsModel:
 
         with pytest.raises(ValueError):
             settings_module.IctSiteRagGuardsSettings(prompt_injection_detected="   ")
+
+        with pytest.raises(ValueError):
+            settings_module.IctSiteRagGuardsSettings(
+                output_personal_data_detected="   "
+            )
 
     def test_negative_limit_is_rejected(self):
         with pytest.raises(ValueError):

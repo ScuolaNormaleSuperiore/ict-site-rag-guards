@@ -35,6 +35,10 @@ and `before_cat_sends_message`. That is intentional: there is nothing to filter
 in a reply we wrote ourselves, and an over-long message is better left out of
 the history.
 
+A second hook, `before_cat_sends_message`, filters the outgoing answer for
+personal data before the user sees it and before the AI turn is written to the
+conversation history.
+
 Reference: DEV/TODO/Workflow_RAG_Cheshire_Cat_AI_semplificato_v12.docx, Fasi 1-2.
 """
 
@@ -55,9 +59,11 @@ try:
         CATEGORY_SECURITY,
         STAGE_INPUT,
         VERDICT_MESSAGE_LENGTH,
+        VERDICT_OUTPUT_PERSONAL_DATA,
         VERDICT_PERSONAL_DATA,
         VERDICT_PROMPT_INJECTION,
         category_of,
+        check_output_personal_data,
         extract_text,
         matched_personal_data_kinds,
         matched_prompt_injection_pattern,
@@ -77,9 +83,11 @@ except ImportError:  # pragma: no cover - depends on how the module is loaded
         CATEGORY_SECURITY,
         STAGE_INPUT,
         VERDICT_MESSAGE_LENGTH,
+        VERDICT_OUTPUT_PERSONAL_DATA,
         VERDICT_PERSONAL_DATA,
         VERDICT_PROMPT_INJECTION,
         category_of,
+        check_output_personal_data,
         extract_text,
         matched_personal_data_kinds,
         matched_prompt_injection_pattern,
@@ -120,6 +128,7 @@ INPUT_GUARD_PRIORITY = -1
 REPLY_SETTING_BY_VERDICT = {
     VERDICT_MESSAGE_LENGTH: "message_too_long",
     VERDICT_PERSONAL_DATA: "personal_data_detected",
+    VERDICT_OUTPUT_PERSONAL_DATA: "output_personal_data_detected",
     VERDICT_PROMPT_INJECTION: "prompt_injection_detected",
 }
 
@@ -192,14 +201,28 @@ def reply_for(verdict: str, settings: IctSiteRagGuardsSettings) -> str | None:
 def enabled_privacy_detectors(
     settings: IctSiteRagGuardsSettings,
 ) -> tuple[str, ...]:
-    """The personal-data detectors currently switched on."""
+    """The input-side personal-data detectors currently switched on."""
     return tuple(
         name
         for name, enabled in (
-            ("email", settings.detect_email),
-            ("codice_fiscale", settings.detect_codice_fiscale),
-            ("iban", settings.detect_iban),
-            ("phone", settings.detect_phone),
+            ("email", settings.detect_input_email),
+            ("codice_fiscale", settings.detect_input_codice_fiscale),
+            ("iban", settings.detect_input_iban),
+            ("phone", settings.detect_input_phone),
+        )
+        if enabled
+    )
+
+
+def output_privacy_checks_enabled(settings: IctSiteRagGuardsSettings) -> tuple[str, ...]:
+    """The output-side personal-data detectors currently switched on."""
+    return tuple(
+        name
+        for name, enabled in (
+            ("email", settings.detect_output_email),
+            ("codice_fiscale", settings.detect_output_codice_fiscale),
+            ("iban", settings.detect_output_iban),
+            ("phone", settings.detect_output_phone),
         )
         if enabled
     )
@@ -243,12 +266,17 @@ def active_guards_summary(
     else:
         limits = f"{CATEGORY_LIMITS}(disabled)"
 
-    detectors = enabled_privacy_detectors(settings)
-    if detectors:
-        privacy = (
-            f"{CATEGORY_PRIVACY}({'+'.join(detectors)}, "
-            f"region={settings.phone_region})"
-        )
+    input_detectors = enabled_privacy_detectors(settings)
+    output_checks = output_privacy_checks_enabled(settings)
+    if input_detectors or output_checks:
+        parts = []
+        if input_detectors:
+            parts.append(f"input={'+'.join(input_detectors)}")
+            parts.append(f"input_region={settings.input_phone_region}")
+        if output_checks:
+            parts.append(f"output={'+'.join(output_checks)}")
+            parts.append(f"output_region={settings.output_phone_region}")
+        privacy = f"{CATEGORY_PRIVACY}({', '.join(parts)})"
     else:
         privacy = f"{CATEGORY_PRIVACY}(disabled)"
 
@@ -319,22 +347,35 @@ def blocked_detail(
     if verdict == VERDICT_MESSAGE_LENGTH:
         return f", length={len(text)} chars (limit {settings.max_message_chars})"
 
-    if verdict == VERDICT_PERSONAL_DATA:
+    if verdict in {VERDICT_PERSONAL_DATA, VERDICT_OUTPUT_PERSONAL_DATA}:
+        if verdict == VERDICT_PERSONAL_DATA:
+            detect_email = settings.detect_input_email
+            detect_codice_fiscale = settings.detect_input_codice_fiscale
+            detect_iban = settings.detect_input_iban
+            detect_phone = settings.detect_input_phone
+            phone_region = settings.input_phone_region
+        else:
+            detect_email = settings.detect_output_email
+            detect_codice_fiscale = settings.detect_output_codice_fiscale
+            detect_iban = settings.detect_output_iban
+            detect_phone = settings.detect_output_phone
+            phone_region = settings.output_phone_region
+
         kinds = matched_personal_data_kinds(
             text,
-            detect_email=settings.detect_email,
-            detect_codice_fiscale=settings.detect_codice_fiscale,
-            detect_iban=settings.detect_iban,
-            detect_phone=settings.detect_phone,
+            detect_email=detect_email,
+            detect_codice_fiscale=detect_codice_fiscale,
+            detect_iban=detect_iban,
+            detect_phone=detect_phone,
             allowed_email=settings.help_desk_email,
-            phone_region=settings.phone_region,
+            phone_region=phone_region,
         )
         detail = f", detected={'+'.join(kinds)}"
 
         # The kind of number is useful to whoever reads the logs, and is not a
         # setting: see the note on `phone_number_types`.
         if "phone" in kinds:
-            types = phone_number_types(text, settings.phone_region)
+            types = phone_number_types(text, phone_region)
             detail += f" ({'+'.join(sorted(set(types)))})"
 
         return detail
@@ -350,6 +391,26 @@ def blocked_detail(
         return f", detector=custom, pattern={pattern}"
 
     return ""
+
+
+def replace_message_text(message, text: str):
+    """Return `message` with its text replaced and its source metadata cleared.
+
+    The output guard replaces the generated answer entirely, so the old `why`
+    metadata must not survive into the static fallback. The hook receives a
+    `CatMessage` on the live flow and may receive a dict in other contexts.
+    """
+    if isinstance(message, dict):
+        updated = dict(message)
+        updated["text"] = text
+        updated["content"] = text
+        updated["why"] = None
+        return updated
+
+    message.text = text
+    if hasattr(message, "why"):
+        message.why = None
+    return message
 
 
 def announce_classifier_failure(
@@ -515,3 +576,44 @@ def guard_input_message(fast_reply, cat):
         f"no retrieval, no generation, nothing stored in memory"
     )
     return {"output": reply}
+
+
+@hook("before_cat_sends_message")
+def guard_output_message(message, cat):
+    """Replace outgoing answers carrying personal data before delivery.
+
+    Unlike the input guard, this path runs after generation: it cannot prevent
+    the model call, but it still stops the answer from reaching the user and
+    from being written to the AI side of the conversation history as generated.
+    """
+    settings = load_settings(cat)
+    if not output_privacy_checks_enabled(settings):
+        return message
+
+    text = extract_text(message)
+    verdict = check_output_personal_data(
+        text,
+        detect_email=settings.detect_output_email,
+        detect_codice_fiscale=settings.detect_output_codice_fiscale,
+        detect_iban=settings.detect_output_iban,
+        detect_phone=settings.detect_output_phone,
+        allowed_email=settings.help_desk_email,
+        phone_region=settings.output_phone_region,
+    )
+    if verdict is None:
+        return message
+
+    reply = reply_for(verdict, settings)
+    if reply is None:
+        return message
+
+    setattr(cat.working_memory, VERDICT_ATTRIBUTE, verdict)
+
+    log.info(
+        f"[ict-site-rag-guards] output blocked, "
+        f"stage='{stage_of(verdict)}', "
+        f"category='{category_of(verdict)}', verdict='{verdict}'"
+        f"{blocked_detail(verdict, text, settings)}; "
+        "generated reply replaced before delivery"
+    )
+    return replace_message_text(message, reply)

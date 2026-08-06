@@ -72,6 +72,19 @@ DEFAULT_PERSONAL_DATA_DETECTED = (
     "{help_desk_email}"
 )
 
+DEFAULT_OUTPUT_PERSONAL_DATA_DETECTED = (
+    "Per tutelare i tuoi dati non posso inviare una risposta che contenga "
+    "dati personali. Riformula la richiesta descrivendo solo il servizio o il "
+    "problema, senza indirizzi e-mail, numeri di telefono, codice fiscale o "
+    "dati bancari. Se il tuo caso richiede dati personali, scrivi "
+    "all'Help Desk ICT: {help_desk_email}\n\n"
+    "To protect your data I cannot send a reply containing personal "
+    "information. Please rephrase your request describing only the service or "
+    "the problem, without e-mail addresses, phone numbers, tax codes or bank "
+    "details. If your case requires personal data, write to the ICT Help "
+    "Desk: {help_desk_email}"
+)
+
 DEFAULT_PROMPT_INJECTION_DETECTED = (
     "Non posso elaborare richieste che cercano di modificare le istruzioni o "
     "di ottenere informazioni interne del chatbot. Riformula la domanda come "
@@ -128,9 +141,9 @@ class IctSiteRagGuardsSettings(BaseModel):
         extra={"type": "TextArea"},
     )
 
-    detect_email: bool = Field(
+    detect_input_email: bool = Field(
         default=True,
-        title="Privacy guard: block e-mail addresses",
+        title="Input privacy guard: block e-mail addresses",
         description=(
             "Refuses messages containing an e-mail address. The Help Desk "
             "address configured above is not treated as personal data, so a "
@@ -138,9 +151,9 @@ class IctSiteRagGuardsSettings(BaseModel):
         ),
     )
 
-    detect_codice_fiscale: bool = Field(
+    detect_input_codice_fiscale: bool = Field(
         default=True,
-        title="Privacy guard: block codice fiscale",
+        title="Input privacy guard: block codice fiscale",
         description=(
             "Refuses messages containing a codice fiscale. The check character "
             "is verified, so a sixteen-character string that merely looks like "
@@ -148,18 +161,18 @@ class IctSiteRagGuardsSettings(BaseModel):
         ),
     )
 
-    detect_iban: bool = Field(
+    detect_input_iban: bool = Field(
         default=True,
-        title="Privacy guard: block IBAN",
+        title="Input privacy guard: block IBAN",
         description=(
             "Refuses messages containing an IBAN. The mod-97 check digits are "
             "verified, so an invalid IBAN does not trigger a refusal."
         ),
     )
 
-    detect_phone: bool = Field(
+    detect_input_phone: bool = Field(
         default=True,
-        title="Privacy guard: block phone numbers",
+        title="Input privacy guard: block phone numbers",
         description=(
             "Refuses messages containing a phone number, landline or mobile, "
             "validated against the numbering plan of the region below rather "
@@ -169,9 +182,9 @@ class IctSiteRagGuardsSettings(BaseModel):
         ),
     )
 
-    phone_region: str = Field(
+    input_phone_region: str = Field(
         default=DEFAULT_PHONE_REGION,
-        title="Privacy guard: region for phone numbers written without a prefix",
+        title="Input privacy guard: region for phone numbers written without a prefix",
         description=(
             "Two-letter country code, for example IT. A number is only valid "
             "relative to a numbering plan: the same digits are a landline in "
@@ -189,6 +202,67 @@ class IctSiteRagGuardsSettings(BaseModel):
             "It states that the message was not stored in the chatbot's "
             "memory, which is true on this path: nothing is retrieved, nothing "
             "is generated, and nothing reaches the vector database."
+        ),
+        extra={"type": "TextArea"},
+    )
+
+    detect_output_email: bool = Field(
+        default=True,
+        title="Output privacy guard: block e-mail addresses",
+        description=(
+            "Refuses to send a generated reply containing an e-mail address. "
+            "The configured Help Desk address is not treated as personal data "
+            "on output either."
+        ),
+    )
+
+    detect_output_codice_fiscale: bool = Field(
+        default=True,
+        title="Output privacy guard: block codice fiscale",
+        description=(
+            "Refuses to send a generated reply containing a codice fiscale. "
+            "The check character is verified, so a sixteen-character string "
+            "that merely looks like one does not trigger a refusal."
+        ),
+    )
+
+    detect_output_iban: bool = Field(
+        default=True,
+        title="Output privacy guard: block IBAN",
+        description=(
+            "Refuses to send a generated reply containing an IBAN. The mod-97 "
+            "check digits are verified, so an invalid IBAN does not trigger a "
+            "refusal."
+        ),
+    )
+
+    detect_output_phone: bool = Field(
+        default=True,
+        title="Output privacy guard: block phone numbers",
+        description=(
+            "Refuses to send a generated reply containing a phone number, "
+            "landline or mobile, validated against the numbering plan of the "
+            "region below rather than matched by shape."
+        ),
+    )
+
+    output_phone_region: str = Field(
+        default=DEFAULT_PHONE_REGION,
+        title="Output privacy guard: region for phone numbers written without a prefix",
+        description=(
+            "Two-letter country code, for example IT, used to validate phone "
+            "numbers in generated replies when they are written without an "
+            "international prefix."
+        ),
+    )
+
+    output_personal_data_detected: str = Field(
+        default=DEFAULT_OUTPUT_PERSONAL_DATA_DETECTED,
+        title="Output privacy guard: reply — outgoing personal data detected",
+        description=(
+            "Sent when a generated reply is replaced because it contains "
+            "personal data. Use {help_desk_email} as a placeholder for the "
+            "address above."
         ),
         extra={"type": "TextArea"},
     )
@@ -268,7 +342,7 @@ class IctSiteRagGuardsSettings(BaseModel):
             )
         return value
 
-    @field_validator("phone_region")
+    @field_validator("input_phone_region", "output_phone_region")
     @classmethod
     def _must_be_a_region_code(cls, value: str) -> str:
         # An unknown region silently finds no numbers at all, which would
@@ -292,6 +366,7 @@ class IctSiteRagGuardsSettings(BaseModel):
     @field_validator(
         "message_too_long",
         "personal_data_detected",
+        "output_personal_data_detected",
         "prompt_injection_detected",
     )
     @classmethod

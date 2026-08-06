@@ -17,7 +17,7 @@ Keeping this signature uniform across checks is what will later allow the
 checks to be iterated over, enabled or reordered from configuration without
 rewriting them.
 
-Reference: DEV/TODO/Workflow_RAG_Cheshire_Cat_AI_semplificato_v12.docx, Fase 2.
+Reference: DEV/TODO/Workflow_RAG_Cheshire_Cat_AI_semplificato_v12.docx, Fasi 2, 5.
 """
 
 import re
@@ -36,6 +36,7 @@ from phonenumbers import Leniency, PhoneNumberMatcher, PhoneNumberType
 # The family is the category below.
 VERDICT_MESSAGE_LENGTH = "message_length"
 VERDICT_PERSONAL_DATA = "personal_data"
+VERDICT_OUTPUT_PERSONAL_DATA = "output_personal_data"
 VERDICT_PROMPT_INJECTION = "prompt_injection"
 
 # The single source for which verdicts exist. Tests derive from this instead of
@@ -44,6 +45,7 @@ VERDICT_PROMPT_INJECTION = "prompt_injection"
 ALL_VERDICTS = (
     VERDICT_MESSAGE_LENGTH,
     VERDICT_PERSONAL_DATA,
+    VERDICT_OUTPUT_PERSONAL_DATA,
     VERDICT_PROMPT_INJECTION,
 )
 
@@ -68,6 +70,7 @@ CATEGORY_SECURITY = "security"
 STAGE_BY_VERDICT = {
     VERDICT_MESSAGE_LENGTH: STAGE_INPUT,
     VERDICT_PERSONAL_DATA: STAGE_INPUT,
+    VERDICT_OUTPUT_PERSONAL_DATA: STAGE_OUTPUT,
     VERDICT_PROMPT_INJECTION: STAGE_INPUT,
 }
 
@@ -78,6 +81,7 @@ STAGE_BY_VERDICT = {
 CATEGORY_BY_VERDICT = {
     VERDICT_MESSAGE_LENGTH: CATEGORY_LIMITS,
     VERDICT_PERSONAL_DATA: CATEGORY_PRIVACY,
+    VERDICT_OUTPUT_PERSONAL_DATA: CATEGORY_PRIVACY,
     VERDICT_PROMPT_INJECTION: CATEGORY_SECURITY,
 }
 
@@ -207,16 +211,17 @@ _CODICE_FISCALE_ODD_VALUES = {
 }
 
 
-def extract_text(user_message: Any) -> str:
-    """Return the text of an incoming message.
+def extract_text(message: Any) -> str:
+    """Return the text of an incoming or outgoing message.
 
     Accepts either a mapping or any object exposing a `text` attribute: the
-    core type hints declare a dict but a `UserMessage` is what actually gets
-    passed. Duck typing keeps this module free of imports from `cat`.
+    core type hints declare dicts for some hooks, but the live flow also passes
+    message objects such as `UserMessage` and `CatMessage`. Duck typing keeps
+    this module free of imports from `cat`.
     """
-    if isinstance(user_message, Mapping):
-        return user_message.get("text") or ""
-    return getattr(user_message, "text", "") or ""
+    if isinstance(message, Mapping):
+        return message.get("text") or message.get("content") or ""
+    return getattr(message, "text", "") or getattr(message, "content", "") or ""
 
 
 def category_of(verdict: str) -> str:
@@ -406,8 +411,9 @@ def matched_personal_data_kinds(
     return tuple(matched)
 
 
-def check_personal_data(
+def _check_personal_data_with_verdict(
     text: str,
+    verdict: str,
     detect_email: bool = True,
     detect_codice_fiscale: bool = True,
     detect_iban: bool = True,
@@ -415,7 +421,7 @@ def check_personal_data(
     allowed_email: str = "",
     phone_region: str = DEFAULT_PHONE_REGION,
 ) -> str | None:
-    """Stop messages carrying personal data, one verdict for every kind.
+    """Stop text carrying personal data, returning the caller's verdict.
 
     Every detector can be switched off independently from the admin panel, so
     an installation can match its own sensitivity. All four off disables the
@@ -430,8 +436,52 @@ def check_personal_data(
         allowed_email=allowed_email,
         phone_region=phone_region,
     ):
-        return VERDICT_PERSONAL_DATA
+        return verdict
     return None
+
+
+def check_personal_data(
+    text: str,
+    detect_email: bool = True,
+    detect_codice_fiscale: bool = True,
+    detect_iban: bool = True,
+    detect_phone: bool = True,
+    allowed_email: str = "",
+    phone_region: str = DEFAULT_PHONE_REGION,
+) -> str | None:
+    """Stop incoming messages carrying personal data."""
+    return _check_personal_data_with_verdict(
+        text,
+        VERDICT_PERSONAL_DATA,
+        detect_email=detect_email,
+        detect_codice_fiscale=detect_codice_fiscale,
+        detect_iban=detect_iban,
+        detect_phone=detect_phone,
+        allowed_email=allowed_email,
+        phone_region=phone_region,
+    )
+
+
+def check_output_personal_data(
+    text: str,
+    detect_email: bool = True,
+    detect_codice_fiscale: bool = True,
+    detect_iban: bool = True,
+    detect_phone: bool = True,
+    allowed_email: str = "",
+    phone_region: str = DEFAULT_PHONE_REGION,
+) -> str | None:
+    """Stop outgoing answers carrying personal data."""
+    return _check_personal_data_with_verdict(
+        text,
+        VERDICT_OUTPUT_PERSONAL_DATA,
+        detect_email=detect_email,
+        detect_codice_fiscale=detect_codice_fiscale,
+        detect_iban=detect_iban,
+        detect_phone=detect_phone,
+        allowed_email=allowed_email,
+        phone_region=phone_region,
+    )
 
 
 def _run_length_check(text: str, config: Any) -> str | None:
@@ -445,12 +495,12 @@ def _run_prompt_injection_check(text: str, config: Any) -> str | None:
 def _run_personal_data_check(text: str, config: Any) -> str | None:
     return check_personal_data(
         text,
-        detect_email=config.detect_email,
-        detect_codice_fiscale=config.detect_codice_fiscale,
-        detect_iban=config.detect_iban,
-        detect_phone=config.detect_phone,
+        detect_email=config.detect_input_email,
+        detect_codice_fiscale=config.detect_input_codice_fiscale,
+        detect_iban=config.detect_input_iban,
+        detect_phone=config.detect_input_phone,
         allowed_email=config.help_desk_email,
-        phone_region=config.phone_region,
+        phone_region=config.input_phone_region,
     )
 
 
