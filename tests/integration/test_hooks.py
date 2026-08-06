@@ -496,7 +496,11 @@ class TestPromptInjectionGuard:
 
         assert captured["token"] == "hf_env_token"
 
-    def test_admin_hf_token_is_used_when_environment_is_missing(self, monkeypatch):
+    def test_the_legacy_environment_variable_is_honoured_too(self, monkeypatch):
+        # `HUGGING_FACE_HUB_TOKEN` is the older name `huggingface_hub` still reads.
+        # Checking it here is not redundant with the library: passing no token would
+        # let the library find it, but the admin field would then win over the
+        # environment, which is the opposite of the documented precedence.
         cat = make_cat(
             {
                 "detect_prompt_injection_custom": False,
@@ -511,6 +515,47 @@ class TestPromptInjectionGuard:
 
         monkeypatch.setattr(guards, "classify_prompt_injection", fake_classifier)
         monkeypatch.delenv("HF_TOKEN", raising=False)
+        monkeypatch.setenv("HUGGING_FACE_HUB_TOKEN", "hf_legacy_token")
+
+        send(cat, "This message reaches the classifier path")
+
+        assert captured["token"] == "hf_legacy_token"
+
+    def test_hf_token_wins_over_the_legacy_variable(self, monkeypatch):
+        cat = make_cat({"detect_prompt_injection_custom": False})
+        captured = {}
+
+        def fake_classifier(text, model_name, threshold, max_length, token=None):
+            captured["token"] = token
+            return {"triggered": False, "label": "BENIGN", "score": 0.01}
+
+        monkeypatch.setattr(guards, "classify_prompt_injection", fake_classifier)
+        monkeypatch.setenv("HF_TOKEN", "hf_current_token")
+        monkeypatch.setenv("HUGGING_FACE_HUB_TOKEN", "hf_legacy_token")
+
+        send(cat, "This message reaches the classifier path")
+
+        assert captured["token"] == "hf_current_token"
+
+    def test_admin_hf_token_is_used_when_environment_is_missing(self, monkeypatch):
+        cat = make_cat(
+            {
+                "detect_prompt_injection_custom": False,
+                "huggingface_token": "hf_admin_token",
+            }
+        )
+        captured = {}
+
+        def fake_classifier(text, model_name, threshold, max_length, token=None):
+            captured["token"] = token
+            return {"triggered": False, "label": "BENIGN", "score": 0.01}
+
+        monkeypatch.setattr(guards, "classify_prompt_injection", fake_classifier)
+        # Both variables, not just the current one: the plugin reads the legacy
+        # name too, so clearing one would leave this test passing only on a machine
+        # where the other happens to be unset.
+        for variable in guards.HUGGINGFACE_TOKEN_VARIABLES:
+            monkeypatch.delenv(variable, raising=False)
 
         send(cat, "This message reaches the classifier path")
 

@@ -1,8 +1,11 @@
-# ICT Site RAG Guards
+# RAG Guards
 
-`ICT Site RAG Guards` is a Cheshire Cat AI plugin for website-based ICT support chatbots.
+
+`RAG Guards` is a Cheshire Cat AI plugin for website-based ICT support chatbots.
 
 It adds deterministic and configurable guardrails around the normal RAG flow so that risky or invalid requests can be stopped early, before they reach retrieval or generation.
+
+The plugin ships **no model weights**. Its prompt-injection guard can be configured to run `meta-llama/Llama-Prompt-Guard-2-86M`, which is downloaded at runtime from Hugging Face by whoever installs the plugin, under Meta's own terms. See [License and Legal Notes](#license-and-legal-notes) — the attribution above is required by that licence and applies to this plugin's documentation and admin-panel description.
 
 ## Features
 
@@ -12,6 +15,7 @@ It adds deterministic and configurable guardrails around the normal RAG flow so 
 - Admin-configurable settings from the Cheshire Cat plugin panel
 - Testable split between pure decision logic and Cheshire Cat hook adapters
 - Architecture prepared for future RAG evidence checks and output guardrails
+- Optional use of Llama classifiers.
 
 ## Current Status
 
@@ -49,13 +53,13 @@ Sharing an installation with other plugins is supported: when one of its own che
 1. Copy the plugin folder into the Cheshire Cat plugins directory.
 2. Start or restart Cheshire Cat AI.
 3. Open the Cheshire Cat admin panel.
-4. Enable `ICT Site RAG Guards` from the plugins list.
+4. Enable `RAG Guards` from the plugins list.
 
 ## Configuration
 
 After activation, open:
 
-`Plugins -> ICT Site RAG Guards -> Settings`
+`Plugins -> RAG Guards -> Settings`
 
 Settings are named after the guard family they belong to, so related options
 read together in the form:
@@ -249,6 +253,46 @@ python package-plugin.py
 
 When a new file must be shipped with the plugin, update `package-plugin.py` so the release package stays explicit and complete.
 
-## License
+## License and Legal Notes
 
-GPL-3.0-only. See `LICENSE`.
+### The plugin
+
+The code in this repository is released under **GNU General Public License v3.0 only**. See `LICENSE`.
+
+### The models are not part of it
+
+This plugin distributes **no model weights**. The release package contains ten files — Python modules, `plugin.json`, `README.md`, `LICENSE`, `requirements.txt` — and nothing else. Every classifier model is downloaded at runtime, from Hugging Face, by the person who installs and configures the plugin, and each one carries its own licence which that person accepts directly with its publisher.
+
+That separation is what keeps the arrangement clean. The GPL governs this code; it does not and cannot govern weights it never ships. **Never add model weights to the release package**: some of the models below are distributed under licences that impose use restrictions, and GPLv3 section 10 forbids adding restrictions to conveyed material — bundling them would create a genuine incompatibility where today there is none.
+
+### Built with Llama
+
+The prompt-injection guard can be configured to run Meta's Llama Prompt Guard 2. When it is, the following notice applies:
+
+> **Llama is licensed under the Llama Community License, Copyright © Meta Platforms, Inc. All Rights Reserved.**
+
+The applicable version, read from the model card on 2026-08-06, is the **Llama 4 Community License Agreement** (`license_name: llama4`). Both Meta models are **gated**: access is granted manually by Meta after the request is accepted, so using them requires accepting Meta's terms on the model page and authenticating at runtime. See [DOC/SecurityGuards.md](DOC/SecurityGuards.md) for the operational steps.
+
+### Licence of each supported model
+
+Verified against the Hugging Face model cards on 2026-08-06. Check them again before a release: a publisher can change a licence, and this table is a snapshot rather than a promise.
+
+| Model | Guard | Licence | Gated |
+| --- | --- | --- | --- |
+| `meta-llama/Llama-Prompt-Guard-2-86M` | prompt injection, **shipped default** | Llama 4 Community License | yes, manual approval |
+| `meta-llama/Llama-Prompt-Guard-2-22M` | prompt injection | Llama 4 Community License | yes, manual approval |
+| `deepset/deberta-v3-base-injection` | prompt injection | MIT | no |
+| `IMSyPP/hate_speech_multilingual` | offensive input, **shipped default** | MIT | no |
+| `patriciacarla/HS-multilingual-DNR` | offensive input | Apache-2.0 | no |
+| `textdetox/bert-multilingual-toxicity-classifier` | offensive input | OpenRAIL++ | no |
+
+Two entries deserve attention before you enable them:
+
+- **The two Meta models are not free software.** The Llama Community License is not an open-source licence: it carries an acceptable-use policy, a monthly-active-users clause and naming requirements. Nothing about that conflicts with this plugin's GPLv3 as long as the weights stay out of the package, but an installation that enables them has accepted terms the GPL does not grant.
+- **`textdetox/bert-multilingual-toxicity-classifier` is OpenRAIL++**, which permits redistribution but attaches behavioural use restrictions that must be passed on downstream. It is the only offensive-input model of the three that is not plainly permissive.
+
+The two shipped defaults sit on opposite sides of this: the tone guard defaults to an MIT model, the prompt-injection guard defaults to a gated Meta one. If a deployment needs to avoid non-free licences entirely, both guards have a permissive option — `deepset/deberta-v3-base-injection` (MIT) and the default `IMSyPP/hate_speech_multilingual` (MIT) — selectable from the admin panel with no code change.
+
+### Runtime dependencies
+
+Declared in `requirements.txt`, all GPL-compatible: `phonenumberslite` (Apache-2.0), `transformers` (Apache-2.0), `torch` (BSD-3-Clause).

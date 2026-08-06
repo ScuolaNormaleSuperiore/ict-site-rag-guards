@@ -90,14 +90,65 @@ The three supported models do not have the same access profile:
 - the two `meta-llama/*` models are gated and require both approved access on
   Hugging Face and an authenticated token at runtime
 
+### Licence and access of the supported models
+
+Verified against the Hugging Face model cards on 2026-08-06:
+
+| Model | Licence | Access |
+| --- | --- | --- |
+| `meta-llama/Llama-Prompt-Guard-2-86M` | Llama 4 Community License | gated, approval granted manually by Meta |
+| `meta-llama/Llama-Prompt-Guard-2-22M` | Llama 4 Community License | gated, approval granted manually by Meta |
+| `deepset/deberta-v3-base-injection` | MIT | public |
+
+The **shipped default is a gated model**, so on an installation where nobody has
+arranged access the classifier does not load and the guard falls back to its
+built-in patterns alone. That is deliberate fail-open behaviour and it is
+reported, but it means the default configuration is not the one that works
+everywhere out of the box.
+
+The full licence picture for every model this plugin can run, including the
+offensive-input ones and what each licence implies, is in `README.md`, section
+*License and Legal Notes*. Legal attribution required by Meta lives there too and
+not here.
+
+### Enabling a gated model, the two steps
+
+The failure is administrative, not technical, so restarting alone never fixes it:
+
+1. **Accept the model terms** at `https://huggingface.co/meta-llama/Llama-Prompt-Guard-2-86M`
+   and wait for approval. For the Meta models it is granted manually and it is not
+   immediate.
+2. **Provide a read token**, then **restart the container**. The restart is not
+   optional: a failed load is remembered and never retried until the plugin
+   reloads, so a token added afterwards has no effect on a running instance.
+
+The plugin says both of these in the log itself when it recognises an
+authorisation failure, so whoever reads the warning does not have to find this
+document:
+
+```
+[ict-site-rag-guards] failed to load classifier model meta-llama/Llama-Prompt-Guard-2-86M: 401 Client Error … ; it will not be retried until the plugin reloads. This model needs authorised access, so the fix is not technical: 1) accept the model terms at https://huggingface.co/meta-llama/Llama-Prompt-Guard-2-86M and wait for approval, which for the Meta models is granted manually and is not immediate; 2) set the HF_TOKEN environment variable to a Hugging Face read token, or fill in the token field in the plugin settings, then restart the container …
+```
+
+That guidance is appended only when the error text looks like an authorisation
+problem — `401`, `403`, `gated`, `awaiting a review` and similar. A failure with
+any other cause gets no instructions, deliberately: guessing the cause would send
+the reader after the wrong problem.
+
 ### Hugging Face token handling
 
-The plugin supports two ways to provide a token for gated models:
+The plugin supports three ways to provide a token for gated models, in this order
+of precedence:
 
 1. `HF_TOKEN` environment variable
-2. `Security guard: Hugging Face token` in the plugin admin settings
+2. `HUGGING_FACE_HUB_TOKEN` environment variable, the legacy name `huggingface_hub` still reads
+3. `Security guard: Hugging Face token` in the plugin admin settings
 
-If both are present, `HF_TOKEN` takes precedence.
+Both environment variables are checked by the plugin itself, and that is not
+redundant with what the library does: passing no token would let
+`huggingface_hub` find them on its own, but then the admin-panel field would take
+precedence over the environment, which is the opposite of what this order
+promises.
 
 This is deliberate:
 

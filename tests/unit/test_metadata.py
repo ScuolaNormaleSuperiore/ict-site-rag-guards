@@ -33,10 +33,68 @@ class TestPluginMetadata:
     def test_plugin_json_matches_the_repository_identity(self):
         plugin = read_json("plugin.json")
 
-        assert plugin["name"] == "ICT Site RAG Guards"
+        assert plugin["name"] == "RAG Guards"
         assert "guardrails" in plugin["description"].lower()
         assert "rag flow" in plugin["description"].lower()
         assert "retrieval or generation" in plugin["description"].lower()
+
+
+class TestLlamaAttribution:
+    """Attribution required by the Llama Community License.
+
+    These assert on documents rather than on behaviour, which is unusual in this
+    suite and deliberate: the obligation is to *display* the attribution, so the
+    failure mode is silent by nature. Nothing stops working when the notice is
+    dropped from the README or from the admin-panel description — the plugin
+    simply becomes non-compliant, and only a reader would ever notice.
+
+    The trigger is the model list, not the current default: as long as this plugin
+    can be configured to run a `meta-llama/*` model, the attribution is required.
+    """
+
+    REQUIRED_NOTICE = (
+        "Llama is licensed under the Llama Community License, "
+        "Copyright © Meta Platforms, Inc. All Rights Reserved."
+    )
+
+    def readme(self) -> str:
+        return (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+
+    def test_a_meta_model_is_still_offered(self):
+        # If this ever fails the obligation may have gone away with the model, and
+        # the tests below should be revisited rather than deleted blindly.
+        source = (REPO_ROOT / "prompt_injection_classifier.py").read_text(
+            encoding="utf-8"
+        )
+
+        assert "meta-llama/" in source
+
+    def test_the_readme_displays_built_with_llama(self):
+        assert "Built with Llama" in self.readme()
+
+    def test_the_readme_carries_the_required_copyright_notice(self):
+        # Character for character, including the © and the final full stop: it is a
+        # prescribed notice, not a paraphrase.
+        assert self.REQUIRED_NOTICE in self.readme()
+
+    def test_the_readme_states_that_no_weights_are_distributed(self):
+        # The fact the whole GPLv3 arrangement rests on: some of these models are
+        # distributed under licences that impose use restrictions, and GPLv3
+        # section 10 forbids adding restrictions to conveyed material.
+        assert "no model weights" in self.readme().lower()
+
+    def test_the_release_package_ships_no_model_weights(self):
+        # The same claim, checked against the packaging list rather than the prose.
+        import importlib.util
+
+        path = REPO_ROOT / "package-plugin.py"
+        spec = importlib.util.spec_from_file_location("package_plugin_legal", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        weights = (".safetensors", ".bin", ".pt", ".pth", ".onnx", ".gguf")
+
+        assert not [name for name in module.INCLUDED_FILES if name.endswith(weights)]
 
 
 class TestShippedSettings:

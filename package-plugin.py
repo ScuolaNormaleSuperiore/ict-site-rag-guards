@@ -23,6 +23,16 @@ PLUGIN_METADATA_FILE = REPO_ROOT / "plugin.json"
 
 # Keep the package explicit: only runtime files listed here are shipped.
 # Internal documentation under `DOC/` is intentionally excluded by default.
+#
+# **Never add model weights or a Hugging Face cache directory to this list.** It
+# is a licensing boundary, not a size optimisation. This plugin is GPL-3.0-only,
+# while two of the classifier models it can run are distributed under the Llama
+# Community License and one under OpenRAIL++ — licences that impose use
+# restrictions. GPLv3 section 10 forbids adding restrictions to conveyed
+# material, so shipping those weights alongside this code would create a real
+# incompatibility. Downloading them at runtime, under the terms the installer
+# accepts directly with the publisher, is what keeps the two apart. See
+# `README.md`, section *License and Legal Notes*.
 INCLUDED_FILES = (
     "plugin.json",
     "README.md",

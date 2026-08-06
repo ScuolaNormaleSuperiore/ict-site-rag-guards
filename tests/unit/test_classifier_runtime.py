@@ -152,6 +152,66 @@ class TestPipelineCache:
         assert captured["kwargs"] == {"device": -1}
 
 
+class TestAccessRemediation:
+    """What a gated model failure tells whoever reads the log.
+
+    A load that fails for missing authorisation is a dead end otherwise: the fix
+    is administrative — accept the terms, wait for approval — and no amount of
+    restarting produces it. These assert that the log carries the fix itself.
+    """
+
+    GATED = "meta-llama/Llama-Prompt-Guard-2-86M"
+
+    def test_an_authorisation_failure_names_both_steps(self):
+        text = runtime.access_remediation(
+            self.GATED, OSError("401 Client Error: gated repo")
+        )
+
+        assert f"https://huggingface.co/{self.GATED}" in text
+        assert "HF_TOKEN" in text
+        assert "restart" in text
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            OSError("401 Client Error"),
+            OSError("403 Forbidden"),
+            OSError("You are trying to access a gated repo"),
+            OSError("Your request to access model is awaiting a review"),
+            OSError("Repo model is restricted and you are not authorized"),
+        ],
+    )
+    def test_the_shapes_an_access_failure_takes_are_recognised(self, error):
+        assert runtime.access_remediation(self.GATED, error) != ""
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            OSError("No space left on device"),
+            ImportError("No module named transformers"),
+            ValueError("Unrecognized configuration class"),
+        ],
+    )
+    def test_any_other_failure_gets_no_instructions(self, error):
+        # Guessing the cause would send the reader after the wrong problem.
+        assert runtime.access_remediation(self.GATED, error) == ""
+
+    def test_the_guidance_reaches_the_warning_of_a_failed_load(self, monkeypatch):
+        warnings = []
+        monkeypatch.setattr(runtime.runtime_log, "warning", warnings.append)
+
+        def explode(task, model, token=None, **kwargs):
+            raise OSError("401 Client Error: gated repo")
+
+        fake_transformers(monkeypatch, explode)
+
+        with pytest.raises(OSError):
+            runtime.get_pipeline(self.GATED)
+
+        assert len(warnings) == 1
+        assert "accept the model terms" in warnings[0]
+
+
 class TestModelLabels:
     """Reading the labels a model can return, which is how a mapping is checked."""
 

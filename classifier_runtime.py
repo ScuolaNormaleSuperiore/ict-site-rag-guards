@@ -48,6 +48,50 @@ class ClassifierUnavailable(RuntimeError):
     """A model that already failed to load and is not being retried."""
 
 
+# What a load failure looks like when the cause is authorisation rather than a
+# broken installation. Matched against the message text because `transformers`
+# wraps several different exception types from `huggingface_hub` and the type
+# alone does not distinguish «you have no access» from «the disk is full».
+_ACCESS_ERROR_MARKERS = (
+    "401",
+    "403",
+    "gated",
+    "awaiting a review",
+    "not authorized",
+    "restricted",
+    "authenticated",
+    "access to model",
+)
+
+
+def access_remediation(model_name: str, error: Exception) -> str:
+    """Instructions for a load that failed because of missing authorisation.
+
+    Empty when the failure looks like anything else: a guess about the cause is
+    worse than silence, because it sends whoever reads the log after the wrong
+    problem.
+
+    This exists because the failure is otherwise a dead end for the reader. Some
+    supported models are gated — access granted manually by their publisher — so
+    the fix is administrative and not technical, and no amount of restarting will
+    produce it. The two steps below are the whole fix.
+    """
+    if not any(marker in str(error).lower() for marker in _ACCESS_ERROR_MARKERS):
+        return ""
+
+    return (
+        f" This model needs authorised access, so the fix is not technical: "
+        f"1) accept the model terms at https://huggingface.co/{model_name} and wait "
+        f"for approval, which for the Meta models is granted manually and is not "
+        f"immediate; "
+        f"2) set the HF_TOKEN environment variable to a Hugging Face read token, or "
+        f"fill in the token field in the plugin settings, then restart the container "
+        f"— the failure is remembered and not retried until the plugin reloads. "
+        f"A model that needs no authentication can be selected instead from the "
+        f"plugin settings, and takes effect immediately."
+    )
+
+
 def classifier_load_error(model_name: str) -> str | None:
     """Why this model is unavailable, or None if it has not failed.
 
@@ -111,7 +155,7 @@ def get_pipeline(model_name: str, token: str | None = None, **pipeline_kwargs):
         runtime_log.warning(
             "[ict-site-rag-guards] failed to load classifier "
             f"model {model_name}: {error}; it will not be retried until the "
-            "plugin reloads"
+            f"plugin reloads.{access_remediation(model_name, error)}"
         )
         raise
 
