@@ -8,7 +8,8 @@ threshold is compared against the **sum** of the blocking ones.
 The shared machinery — pipeline cache, negative cache, lazy `transformers`
 import, fail-open contract — lives in `classifier_runtime.py`.
 
-Reference: DEV/TODO/HateDefenderPlan.md, and DEV/TODO/RagGuardsPlan.md, Fase 2.
+Reference: DOC/ToneGuards.md, which describes this guard in detail, and
+DEV/TODO/RagGuardsPlan.md, Fase 2.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ except ImportError:  # pragma: no cover - depends on how the module is loaded
 DEFAULT_OFFENSIVE_INPUT_CLASSIFIER_MODEL = "IMSyPP/hate_speech_multilingual"
 
 # Measured, not inherited. On the seven-message probe recorded in
-# DEV/TODO/HateDefenderPlan.md the blocking sum was 0.42 for a frustrated user
+# DOC/ToneGuards.md the blocking sum was 0.42 for a frustrated user
 # swearing at a broken service — which must pass — and 0.78 for explicit hate
 # speech, which must not. The default sits in that gap, with margin on both
 # sides.
@@ -70,7 +71,7 @@ OFFENSIVE_INPUT_CLASSIFIER_CLASSES = {
 # omission: an ICT help desk receives exasperated users, and a message that is
 # rude about a broken service is a support request written badly. Refusing it is
 # the kind of error that gets a guard switched off, which leaves no protection at
-# all. See DEV/TODO/HateDefenderPlan.md.
+# all. See DOC/ToneGuards.md.
 OFFENSIVE_INPUT_CLASSIFIER_LABELS = {
     "IMSyPP/hate_speech_multilingual": ("OFFENSIVE", "VIOLENT"),
     "patriciacarla/HS-multilingual-DNR": ("OFFENSIVE", "VIOLENT"),

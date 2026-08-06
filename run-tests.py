@@ -1,7 +1,7 @@
 """Run the ict-site-rag-guards test suite.
 
 This is the single source of truth for test execution: the pre-commit hook, CI
-and manual runs all go through this file. See `DOC/TESTING.md`.
+and manual runs all go through this file. See `DOC/TestingCode.md`.
 """
 
 from __future__ import annotations

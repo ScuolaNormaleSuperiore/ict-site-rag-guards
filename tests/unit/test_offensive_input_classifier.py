@@ -3,7 +3,7 @@
 The pipeline is always a stub, so nothing here downloads a model. What the stubs
 return is not invented: the four-class score sets are the ones
 `IMSyPP/hate_speech_multilingual` actually produced on the installed core on
-2026-08-06, recorded in `DEV/TODO/HateDefenderPlan.md`. Using measured numbers is
+2026-08-06, recorded in `DOC/ToneGuards.md`. Using measured numbers is
 what makes the threshold tests mean something — with made-up scores they would
 only assert that a comparison operator works.
 """
@@ -115,7 +115,7 @@ class TestSupportedModels:
     def test_inappropriate_is_not_a_blocking_class(self):
         # A decision, not an accident: an exasperated user swearing at a broken
         # service is a support request written badly, and refusing it is what gets
-        # a guard switched off. See DEV/TODO/HateDefenderPlan.md.
+        # a guard switched off. See DOC/ToneGuards.md.
         for blocking in offensive.OFFENSIVE_INPUT_CLASSIFIER_LABELS.values():
             assert "INAPPROPRIATE" not in {name.upper() for name in blocking}
 

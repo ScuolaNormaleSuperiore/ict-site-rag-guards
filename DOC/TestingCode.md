@@ -86,6 +86,38 @@ This tier matters because it catches what the other two cannot. The interaction 
 
 The same tier is where another plugin's side effects show up. Above its own `max_prompt_length`, Rate Limiter still records an infraction and suspends the user for 5, 15 or 60 minutes, silently blocking their next legitimate messages, even though the reply delivered is this plugin's. No test can see that either.
 
+### Manual check still outstanding: the tone guard
+
+The offensive-input guard has **never been exercised through the admin panel**.
+Its decision rule is covered by unit tests built on the scores the real model
+produced, and the classifier was run against that model through the plugin's own
+code path — but nobody has switched the toggle on in the panel and sent a message
+through the running instance.
+
+That is the gap only this tier can close, and it is wider than usual here because
+the guard ships **switched off**: every automated test that exercises it has to
+enable it itself, so the path an administrator actually takes is the one path
+never taken.
+
+Suggested procedure:
+
+1. Enable `Tone guard: block offensive incoming messages with local classifier`
+   in the panel and save.
+2. Confirm the `guards active` line moves from `tone(disabled)` to
+   `tone(classifier IMSyPP/hate_speech_multilingual@0.60)`. That line proves the
+   setting reached the guard.
+3. Send an insult. Expect the static reply, and one `INFO` line with
+   `category='tone'`, `verdict='offensive_input'`, a `label`, a `score` above the
+   threshold, and **no trace of the message text**.
+4. Send `Questa maledetta VPN non funziona mai`. Expect a normal answer: an
+   exasperated user must not be refused. This is the false-positive case the
+   threshold was chosen for.
+5. Send a legitimate ICT question and confirm nothing is logged at `INFO` beyond
+   the classifier cache-hit line.
+
+The first message after enabling also pays the model load, so expect it to be
+slow — see `DOC/ToneGuards.md`.
+
 ### Manual check for the current output privacy guard
 
 One concrete live check is now worth keeping in the checklist, because it

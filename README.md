@@ -5,7 +5,7 @@
 
 It adds deterministic and configurable guardrails around the normal RAG flow so that risky or invalid requests can be stopped early, before they reach retrieval or generation.
 
-The plugin ships **no model weights**. Its prompt-injection guard can be configured to run `meta-llama/Llama-Prompt-Guard-2-86M`, which is downloaded at runtime from Hugging Face by whoever installs the plugin, under Meta's own terms. See [License and Legal Notes](#license-and-legal-notes) — the attribution above is required by that licence and applies to this plugin's documentation and admin-panel description.
+The plugin ships **no model weights**. Its prompt-injection guard can be configured to run `meta-llama/Llama-Prompt-Guard-2-86M`, which is downloaded at runtime from Hugging Face by whoever installs the plugin, under Meta's own terms. The attribution that licence requires, and the licence of every model this plugin can run, are in [License and Legal Notes](#license-and-legal-notes).
 
 ## Features
 
@@ -117,6 +117,19 @@ plugin returns a static reply before retrieval or generation. A detailed
 description of the guard lives in `DOC/SecurityGuards.md`, including when a
 Hugging Face token is needed for gated classifier models.
 
+A further input check refuses offensive or violent messages, on the same
+early-stop path and with a local multilingual classifier. It runs **last**, so it
+only sees a message every other check let through, and one consequence is
+deliberate: a message that is both offensive and a prompt-injection attempt is
+reported as prompt injection, because an attack on the assistant is the more
+pertinent correction to give back. Two things set it apart from the other guards.
+Its threshold is compared against the **sum** of the classes that count as
+offensive for the selected model, not against a single score, so the same number
+means something stricter here than in the prompt injection guard. And it is the
+**only check shipped switched off**, because it loads a second model into memory
+and its precision on real help-desk traffic still has to be measured. A detailed
+description lives in `DOC/ToneGuards.md`.
+
 The plugin also inspects the generated answer just before delivery. If the
 reply contains personal data, it is replaced with a static fallback instead of
 being sent to the user. The input-side and output-side privacy guards now have
@@ -223,7 +236,7 @@ Main files:
 - `offensive_input_classifier.py`: the sum of a model's offensive classes against a threshold
 - `settings.py`: plugin settings model and shipped defaults
 - `ict_site_rag_guards.py`: Cheshire Cat hooks and settings loading
-- `tests/`: the test suite, described in [DOC/TESTING.md](DOC/TESTING.md)
+- `tests/`: the test suite, described in [DOC/TestingCode.md](DOC/TestingCode.md)
 
 Project-specific architecture notes, roadmap, and development guidance live under `DEV/AGENTS/` and `DEV/TODO/`.
 
@@ -241,7 +254,7 @@ Run the full suite:
 python run-tests.py
 ```
 
-These are the only two commands needed to run the tests. Everything else about testing — the test layout, which tests need the Cheshire Cat container, how the runner behaves, and what is verified manually — is in [DOC/TESTING.md](DOC/TESTING.md).
+These are the only two commands needed to run the tests. Everything else about testing — the test layout, which tests need the Cheshire Cat container, how the runner behaves, and what is verified manually — is in [DOC/TestingCode.md](DOC/TestingCode.md).
 
 ## Packaging
 
