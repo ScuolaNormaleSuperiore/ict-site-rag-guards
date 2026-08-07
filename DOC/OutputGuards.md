@@ -1,6 +1,6 @@
 # Output Guards
 
-Current output-side guard behavior for `ict-site-rag-guards`.
+Current output-side guard behavior for `rag-guardrails`.
 
 This document describes only the output guards that exist today. The taxonomy
 of `stage`, `category` and `verdict` is defined in
@@ -75,7 +75,7 @@ The corresponding input-side privacy settings are independent:
 Example block line:
 
 ```text
-[ict-site-rag-guards] output blocked, stage='output', category='privacy', verdict='output_personal_data', detected=email; generated reply replaced before delivery
+[rag-guardrails] output blocked, stage='output', category='privacy', verdict='output_personal_data', detected=email; generated reply replaced before delivery
 ```
 
 As on input:
@@ -118,3 +118,4 @@ missing** from the pipeline, because it is the only one that would look at what
 the model actually produced against the evidence it was given. It is deferred for
 a concrete reason — it needs a citation format to compare against, and that
 format is not defined yet.
+

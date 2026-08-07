@@ -1,6 +1,6 @@
 # Classifier Labels
 
-How classifier labels are handled in `ict-site-rag-guards`.
+How classifier labels are handled in `rag-guardrails`.
 
 This document explains, in detail, how the plugin interprets the labels returned
 by its local classifiers, how it decides whether a message must be blocked, and
@@ -297,3 +297,4 @@ Offensive input is treated as:
 Using the same label-handling strategy for both would be misleading. The plugin
 therefore keeps two separate policies, and verifies each one against the labels
 the loaded model actually declares.
+

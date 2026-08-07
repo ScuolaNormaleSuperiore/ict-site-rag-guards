@@ -37,7 +37,7 @@ import checks  # noqa: E402  (import after the path fix, on purpose)
 # without the core dependencies these modules cannot be imported at all, and
 # skipping is the wanted outcome there.
 guards = pytest.importorskip(
-    "ict_site_rag_guards",
+    "rag_guardrails",
     reason="needs the Cheshire Cat core importable; run inside the container",
 )
 settings_module = pytest.importorskip("settings")
@@ -140,7 +140,7 @@ class TestHookRegistration:
     def test_settings_model_returns_the_class_the_admin_form_is_built_from(self):
         model = settings_module.settings_model.function()
 
-        assert model is settings_module.IctSiteRagGuardsSettings
+        assert model is settings_module.RagGuardrailsSettings
         # What the core actually renders the form from.
         assert model.model_json_schema()["properties"].keys() >= {
             "help_desk_email",
@@ -278,9 +278,9 @@ class TestPersonalDataGuard:
         assert "was not stored" in output
 
     def test_the_configured_help_desk_address_is_not_personal_data(self):
-        cat = make_cat({"help_desk_email": "ict@example.org"})
+        cat = make_cat({"help_desk_email": "heldesk@example.org"})
 
-        result = send(cat, "Ho scritto a ict@example.org e non ho risposta")
+        result = send(cat, "Ho scritto a heldesk@example.org e non ho risposta")
 
         assert "output" not in result
 
@@ -299,7 +299,7 @@ class TestPersonalDataGuard:
 
     def test_blocked_detail_names_the_detector_without_the_message(self):
         # What reaches the log: the shape of the violation, never the text.
-        settings = settings_module.IctSiteRagGuardsSettings()
+        settings = settings_module.RagGuardrailsSettings()
 
         detail = guards.blocked_detail(
             checks.VERDICT_PERSONAL_DATA, "scrivimi a mario.rossi@sns.it", settings
@@ -309,7 +309,7 @@ class TestPersonalDataGuard:
         assert "mario.rossi" not in detail
 
     def test_blocked_detail_records_the_kind_of_phone_number(self):
-        settings = settings_module.IctSiteRagGuardsSettings()
+        settings = settings_module.RagGuardrailsSettings()
 
         detail = guards.blocked_detail(
             checks.VERDICT_PERSONAL_DATA, "chiamatemi allo 050 509111", settings
@@ -361,11 +361,11 @@ class TestOutputPersonalDataGuard:
         assert verdict_of(cat) == "ATTRIBUTE MISSING"
 
     def test_the_configured_help_desk_address_is_not_personal_data_on_output(self):
-        cat = make_cat({"help_desk_email": "ict@example.org"})
+        cat = make_cat({"help_desk_email": "heldesk@example.org"})
 
-        result = deliver(cat, "Per assistenza scrivi a ict@example.org")
+        result = deliver(cat, "Per assistenza scrivi a heldesk@example.org")
 
-        assert result.text == "Per assistenza scrivi a ict@example.org"
+        assert result.text == "Per assistenza scrivi a heldesk@example.org"
 
     def test_the_output_guard_can_be_disabled(self):
         cat = make_cat(
@@ -641,7 +641,7 @@ class TestPromptInjectionGuard:
         assert any("pattern=reveal_prompt_en" in line for line in lines)
 
     def test_blocked_detail_names_the_pattern(self):
-        settings = settings_module.IctSiteRagGuardsSettings()
+        settings = settings_module.RagGuardrailsSettings()
 
         detail = guards.blocked_detail(
             checks.VERDICT_PROMPT_INJECTION,
@@ -701,17 +701,17 @@ class TestVerdictTrace:
 
 class TestConfiguration:
     def test_reply_for_returns_the_configured_reply_for_a_known_verdict(self):
-        settings = settings_module.IctSiteRagGuardsSettings(
-            help_desk_email="ict@example.org",
+        settings = settings_module.RagGuardrailsSettings(
+            help_desk_email="heldesk@example.org",
             message_too_long="Write to {help_desk_email}.",
         )
 
         assert guards.reply_for(checks.VERDICT_MESSAGE_LENGTH, settings) == (
-            "Write to ict@example.org."
+            "Write to heldesk@example.org."
         )
 
     def test_reply_for_returns_none_for_an_unknown_verdict(self):
-        settings = settings_module.IctSiteRagGuardsSettings()
+        settings = settings_module.RagGuardrailsSettings()
 
         assert guards.reply_for("unknown_verdict", settings) is None
 
@@ -724,11 +724,11 @@ class TestConfiguration:
         assert "output" not in send(cat, "a" * 100_000)
 
     def test_configured_email_is_inserted_in_the_reply(self):
-        cat = make_cat({"help_desk_email": "ict@example.org", "max_message_chars": 10})
+        cat = make_cat({"help_desk_email": "heldesk@example.org", "max_message_chars": 10})
 
         output = send(cat, "a" * 11)["output"]
 
-        assert "ict@example.org" in output
+        assert "heldesk@example.org" in output
         # No placeholder must survive into what the user reads.
         assert "{help_desk_email}" not in output
 
@@ -737,11 +737,11 @@ class TestConfiguration:
             {
                 "max_message_chars": 10,
                 "message_too_long": "Too long. Write to {help_desk_email}.",
-                "help_desk_email": "ict@example.org",
+                "help_desk_email": "heldesk@example.org",
             }
         )
 
-        assert send(cat, "a" * 11)["output"] == "Too long. Write to ict@example.org."
+        assert send(cat, "a" * 11)["output"] == "Too long. Write to heldesk@example.org."
 
     def test_braces_in_a_hand_edited_reply_do_not_raise(self):
         # The text is edited in the admin panel: a stray brace must not turn a
@@ -759,7 +759,7 @@ class TestConfiguration:
         assert "output" in send(cat, "a" * 5000)
 
     def test_partial_stored_settings_keep_the_other_defaults(self):
-        cat = make_cat({"help_desk_email": "ict@example.org"})
+        cat = make_cat({"help_desk_email": "heldesk@example.org"})
         assert guards.load_settings(cat).max_message_chars == (
             checks.DEFAULT_MAX_MESSAGE_CHARS
         )
@@ -779,7 +779,7 @@ class TestConfiguration:
     def test_extra_stored_fields_are_ignored_when_the_settings_are_valid(self):
         cat = make_cat(
             {
-                "help_desk_email": "ict@example.org",
+                "help_desk_email": "heldesk@example.org",
                 "max_message_chars": 123,
                 "extra_field": "ignored",
             }
@@ -787,7 +787,7 @@ class TestConfiguration:
 
         loaded = guards.load_settings(cat)
 
-        assert loaded.help_desk_email == "ict@example.org"
+        assert loaded.help_desk_email == "heldesk@example.org"
         assert loaded.max_message_chars == 123
 
     def test_unavailable_settings_fall_back_to_defaults(self):
@@ -947,7 +947,7 @@ class TestGuardAnnouncement:
         # the tone one, so the shipped summary names patterns alone. What this
         # asserts is that *when enabled* the line carries the model and threshold,
         # which is what makes a misconfiguration readable.
-        settings = settings_module.IctSiteRagGuardsSettings(
+        settings = settings_module.RagGuardrailsSettings(
             detect_prompt_injection_classifier=True
         )
 
@@ -1068,7 +1068,7 @@ class TestClassifierUnavailable:
         # claim a check that cannot run. Enabled explicitly: a classifier that
         # ships disabled is not listed either, for a different and less
         # interesting reason.
-        settings = settings_module.IctSiteRagGuardsSettings(**self.ENABLED)
+        settings = settings_module.RagGuardrailsSettings(**self.ENABLED)
         model = settings.prompt_injection_classifier_model.value
 
         assert "injection_classifier" in guards.enabled_check_names(settings)
@@ -1174,7 +1174,7 @@ class TestAllowedPathLogging:
         )
 
     def test_disabled_checks_are_left_out_of_the_list(self):
-        settings = settings_module.IctSiteRagGuardsSettings(
+        settings = settings_module.RagGuardrailsSettings(
             max_message_chars=0, detect_prompt_injection_classifier=False
         )
 
@@ -1199,7 +1199,7 @@ class TestSettingsModel:
         assert not missing, f"verdicts without a reply setting: {sorted(missing)}"
 
     def test_every_reply_setting_exists_on_the_model(self):
-        fields = settings_module.IctSiteRagGuardsSettings.model_fields
+        fields = settings_module.RagGuardrailsSettings.model_fields
         for verdict, setting_name in guards.REPLY_SETTING_BY_VERDICT.items():
             assert setting_name in fields, (
                 f"verdict '{verdict}' points at '{setting_name}', "
@@ -1219,7 +1219,7 @@ class TestSettingsModel:
         # written in Italian alone with a paragraph break passed — so the test
         # claimed to check bilingualism and did not. It now looks for words of both
         # languages, which is what the claim actually means.
-        defaults = settings_module.IctSiteRagGuardsSettings()
+        defaults = settings_module.RagGuardrailsSettings()
 
         for setting_name in guards.REPLY_SETTING_BY_VERDICT.values():
             reply = getattr(defaults, setting_name).lower()
@@ -1285,7 +1285,7 @@ class TestSettingsModel:
         assert not leaked, f"the token reached the log: {leaked}"
 
     def test_prompt_injection_model_is_an_enum_field(self):
-        annotation = settings_module.IctSiteRagGuardsSettings.model_fields[
+        annotation = settings_module.RagGuardrailsSettings.model_fields[
             "prompt_injection_classifier_model"
         ].annotation
 
@@ -1294,40 +1294,40 @@ class TestSettingsModel:
     def test_model_defaults_can_build_settings_json(self):
         # The core creates settings.json from the model: a field without a
         # default would make activation fail.
-        assert settings_module.IctSiteRagGuardsSettings().model_dump_json()
+        assert settings_module.RagGuardrailsSettings().model_dump_json()
 
     @pytest.mark.parametrize(
         "bad_email", ["not-an-address", "@example.org", "ict@", " "]
     )
     def test_email_must_look_like_an_address(self, bad_email):
         with pytest.raises(ValueError):
-            settings_module.IctSiteRagGuardsSettings(help_desk_email=bad_email)
+            settings_module.RagGuardrailsSettings(help_desk_email=bad_email)
 
     def test_reply_cannot_be_empty(self):
         with pytest.raises(ValueError):
-            settings_module.IctSiteRagGuardsSettings(message_too_long="   ")
+            settings_module.RagGuardrailsSettings(message_too_long="   ")
 
         with pytest.raises(ValueError):
-            settings_module.IctSiteRagGuardsSettings(prompt_injection_detected="   ")
+            settings_module.RagGuardrailsSettings(prompt_injection_detected="   ")
 
         with pytest.raises(ValueError):
-            settings_module.IctSiteRagGuardsSettings(
+            settings_module.RagGuardrailsSettings(
                 output_personal_data_detected="   "
             )
 
     def test_negative_limit_is_rejected(self):
         with pytest.raises(ValueError):
-            settings_module.IctSiteRagGuardsSettings(max_message_chars=-1)
+            settings_module.RagGuardrailsSettings(max_message_chars=-1)
 
     def test_classifier_threshold_must_stay_between_zero_and_one(self):
         with pytest.raises(ValueError):
-            settings_module.IctSiteRagGuardsSettings(
+            settings_module.RagGuardrailsSettings(
                 prompt_injection_classifier_threshold=1.1
             )
 
     def test_classifier_model_must_be_supported(self):
         with pytest.raises(ValueError):
-            settings_module.IctSiteRagGuardsSettings(
+            settings_module.RagGuardrailsSettings(
                 prompt_injection_classifier_model="unknown/model"
             )
 
@@ -1515,7 +1515,7 @@ class TestOffensiveInputGuard:
         assert all("molto riconoscibile" not in line for line in lines)
 
     def test_it_is_listed_among_the_checks_that_covered_an_allowed_turn(self):
-        settings = settings_module.IctSiteRagGuardsSettings(**self.ENABLED)
+        settings = settings_module.RagGuardrailsSettings(**self.ENABLED)
 
         assert "offensive_input" in guards.enabled_check_names(settings)
 
@@ -1523,12 +1523,12 @@ class TestOffensiveInputGuard:
         monkeypatch.setattr(
             guards, "classifier_load_error", lambda name: "401 gated repo"
         )
-        settings = settings_module.IctSiteRagGuardsSettings(**self.ENABLED)
+        settings = settings_module.RagGuardrailsSettings(**self.ENABLED)
 
         assert "offensive_input" not in guards.enabled_check_names(settings)
 
     def test_the_announcement_names_the_model_and_the_threshold_when_enabled(self):
-        settings = settings_module.IctSiteRagGuardsSettings(**self.ENABLED)
+        settings = settings_module.RagGuardrailsSettings(**self.ENABLED)
 
         summary, uncovered = guards.active_guards_summary(settings)
 
@@ -1541,7 +1541,7 @@ class TestOffensiveInputSettings:
     def test_it_ships_switched_off(self):
         # The only check of this plugin that does, and deliberately: a second
         # model in memory, and a precision still to be measured.
-        shipped = settings_module.IctSiteRagGuardsSettings()
+        shipped = settings_module.RagGuardrailsSettings()
 
         assert shipped.detect_offensive_input_classifier is False
 
@@ -1549,7 +1549,7 @@ class TestOffensiveInputSettings:
         # Not a coincidence to be tidied away: this threshold meets the sum of the
         # blocking classes, so the same number would be stricter. At 0.85 the
         # measured hate-speech message was delivered unblocked.
-        settings = settings_module.IctSiteRagGuardsSettings()
+        settings = settings_module.RagGuardrailsSettings()
 
         assert (
             settings.offensive_input_classifier_threshold
@@ -1558,27 +1558,28 @@ class TestOffensiveInputSettings:
 
     def test_the_model_must_be_supported(self):
         with pytest.raises(ValueError):
-            settings_module.IctSiteRagGuardsSettings(
+            settings_module.RagGuardrailsSettings(
                 offensive_input_classifier_model="unknown/model"
             )
 
     def test_the_threshold_must_stay_between_zero_and_one(self):
         with pytest.raises(ValueError):
-            settings_module.IctSiteRagGuardsSettings(
+            settings_module.RagGuardrailsSettings(
                 offensive_input_classifier_threshold=1.1
             )
 
     def test_the_reply_cannot_be_empty(self):
         with pytest.raises(ValueError):
-            settings_module.IctSiteRagGuardsSettings(offensive_input_detected="   ")
+            settings_module.RagGuardrailsSettings(offensive_input_detected="   ")
 
     def test_a_broken_stored_value_falls_back_to_the_default(self):
         # The whole file could be broken and the guard must still run.
         settings = guards.load_settings(
             make_cat({"offensive_input_classifier_threshold": "not a number"})
         )
-        shipped = settings_module.IctSiteRagGuardsSettings()
+        shipped = settings_module.RagGuardrailsSettings()
 
         assert settings.offensive_input_classifier_threshold == (
             shipped.offensive_input_classifier_threshold
         )
+

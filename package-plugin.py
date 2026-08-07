@@ -43,7 +43,7 @@ INCLUDED_FILES = (
     "prompt_injection_classifier.py",
     "offensive_input_classifier.py",
     "settings.py",
-    "ict_site_rag_guards.py",
+    "rag_guardrails.py",
 )
 
 
@@ -57,7 +57,7 @@ def plugin_slug(metadata: dict) -> str:
     slug = plugin_url.rsplit("/", 1)[-1] if plugin_url else ""
     if slug:
         return slug.removesuffix(".git")
-    return "ict-site-rag-guards"
+    return "rag-guardrails"
 
 
 def package_name(metadata: dict, slug: str) -> str:
@@ -103,3 +103,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

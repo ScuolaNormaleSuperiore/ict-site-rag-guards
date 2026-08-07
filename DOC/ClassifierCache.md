@@ -1,6 +1,6 @@
 # Classifier Cache
 
-How the local-classifier cache works in `ict-site-rag-guards`.
+How the local-classifier cache works in `rag-guardrails`.
 
 This document explains the runtime cache used by the two local classifier
 guards:
@@ -221,3 +221,4 @@ Both caches live only for the lifetime of the plugin process.
 They are reset when the plugin reloads, which in practice means when the Cat
 process or container restarts, or when the plugin is reloaded in a way that
 re-imports the module.
+

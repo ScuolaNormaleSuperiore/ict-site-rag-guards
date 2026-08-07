@@ -79,7 +79,7 @@ def _warn_on_label_mismatch(model_name: str, pipeline) -> None:
         return
 
     runtime_log.warning(
-        f"[ict-site-rag-guards] prompt-injection classifier model {model_name} "
+        f"[rag-guardrails] prompt-injection classifier model {model_name} "
         f"returns labels {'+'.join(returned)}, not the expected blocking label "
         f"{expected}; the check is enabled but cannot block anything. Its label "
         "mapping in prompt_injection_classifier.py needs updating"
@@ -120,3 +120,4 @@ def classify_prompt_injection(
         "label": label,
         "score": score,
     }
+

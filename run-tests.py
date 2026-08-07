@@ -1,4 +1,4 @@
-"""Run the ict-site-rag-guards test suite.
+"""Run the rag-guardrails test suite.
 
 This is the single source of truth for test execution: the pre-commit hook, CI
 and manual runs all go through this file. See `DOC/TestingCode.md`.
@@ -16,12 +16,12 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent
 SERVICE = "cheshire-cat-core"
-PLUGIN_IN_CONTAINER = "/app/cat/plugins/ict-site-rag-guards"
+PLUGIN_IN_CONTAINER = "/app/cat/plugins/rag-guardrails"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run the ict-site-rag-guards test suite."
+        description="Run the rag-guardrails test suite."
     )
     parser.add_argument(
         "-u",
@@ -148,6 +148,12 @@ def run_container_suite(detailed: bool) -> int:
         "python",
         "-m",
         "pytest",
+        # The plugin folder is bind-mounted, so a .pytest_cache created by a
+        # local run belongs to the host user and the container cannot write
+        # into it. Nothing here uses --lf or --ff, so drop the cache rather
+        # than warn about it on every run.
+        "-p",
+        "no:cacheprovider",
     ]
     if detailed:
         command.append("-v")
@@ -167,3 +173,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

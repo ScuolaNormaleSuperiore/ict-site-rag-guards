@@ -23,7 +23,7 @@ configuration changes — not on every message.
 Example:
 
 ```text
-[ict-site-rag-guards] guards active: limits(max 1000 chars), privacy(input=email+codice_fiscale+iban+phone, input_region=IT, output=email, output_region=IT), security(patterns+classifier meta-llama/Llama-Prompt-Guard-2-86M@0.85), tone(disabled)
+[rag-guardrails] guards active: limits(max 1000 chars), privacy(input=email+codice_fiscale+iban+phone, input_region=IT, output=email, output_region=IT), security(patterns+classifier meta-llama/Llama-Prompt-Guard-2-86M@0.85), tone(disabled)
 ```
 
 When a whole family is switched off and that family is expected to be active by
@@ -31,7 +31,7 @@ default, the same line is raised as a `WARNING` and names what is left
 uncovered:
 
 ```text
-[ict-site-rag-guards] guards active: limits(max 500 chars), privacy(disabled), security(patterns+classifier …), tone(disabled); no guard covers: privacy
+[rag-guardrails] guards active: limits(max 500 chars), privacy(disabled), security(patterns+classifier …), tone(disabled); no guard covers: privacy
 ```
 
 `tone(disabled)` is intentionally present in the summary but absent from the
@@ -47,19 +47,19 @@ block.
 ### Input privacy
 
 ```text
-[ict-site-rag-guards] input blocked, stage='input', category='privacy', verdict='personal_data', detected=email+phone (mobile), latency_ms=0.14; no retrieval, no generation, nothing stored in memory
+[rag-guardrails] input blocked, stage='input', category='privacy', verdict='personal_data', detected=email+phone (mobile), latency_ms=0.14; no retrieval, no generation, nothing stored in memory
 ```
 
 ### Output privacy
 
 ```text
-[ict-site-rag-guards] output blocked, stage='output', category='privacy', verdict='output_personal_data', detected=email; generated reply replaced before delivery
+[rag-guardrails] output blocked, stage='output', category='privacy', verdict='output_personal_data', detected=email; generated reply replaced before delivery
 ```
 
 ### Offensive input
 
 ```text
-[ict-site-rag-guards] input blocked, stage='input', category='tone', verdict='offensive_input', detector=classifier, model=IMSyPP/hate_speech_multilingual, label=violent, score=0.999, threshold=0.60, latency_ms=79.2; no retrieval, no generation, nothing stored in memory
+[rag-guardrails] input blocked, stage='input', category='tone', verdict='offensive_input', detector=classifier, model=IMSyPP/hate_speech_multilingual, label=violent, score=0.999, threshold=0.60, latency_ms=79.2; no retrieval, no generation, nothing stored in memory
 ```
 
 On the offensive-input line, `score` needs one caution: it is the sum of the
@@ -76,7 +76,7 @@ Set `CCAT_LOG_LEVEL=DEBUG` to get one line per allowed input message when
 diagnosing a specific request:
 
 ```text
-[ict-site-rag-guards] input allowed, stage='input', checks=length+injection_patterns+personal_data+injection_classifier, latency_ms=0.03
+[rag-guardrails] input allowed, stage='input', checks=length+injection_patterns+personal_data+injection_classifier, latency_ms=0.03
 ```
 
 One exception currently remains at `INFO`: while the prompt-injection
@@ -94,3 +94,4 @@ the shape of the violation is recorded:
 One consequence is worth keeping in mind: Cheshire Cat itself logs every
 incoming message before any plugin runs, so log retention remains a
 data-protection question independent of this plugin.
+

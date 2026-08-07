@@ -1,6 +1,6 @@
 # Tone Guards
 
-Current register-oriented guard behaviour for `ict-site-rag-guards`, with a
+Current register-oriented guard behaviour for `rag-guardrails`, with a
 detailed focus on the offensive-input check.
 
 The taxonomy of `stage`, `category` and `verdict` is defined in
@@ -200,7 +200,7 @@ so when its model does not load the `tone` category covers nothing, and the line
 says exactly that:
 
 ```
-[ict-site-rag-guards] offensive-input classifier unavailable (IMSyPP/hate_speech_multilingual: …), continuing without blocking; no guard covers: tone — this check has no deterministic fallback. Not repeated until the plugin reloads
+[rag-guardrails] offensive-input classifier unavailable (IMSyPP/hate_speech_multilingual: …), continuing without blocking; no guard covers: tone — this check has no deterministic fallback. Not repeated until the plugin reloads
 ```
 
 A failed load is remembered and never retried until the plugin reloads, which is
@@ -213,7 +213,7 @@ works immediately, because the cache is per model.
 One `INFO` line per refusal, never the refused text:
 
 ```
-[ict-site-rag-guards] input blocked, stage='input', category='tone', verdict='offensive_input', detector=classifier, model=IMSyPP/hate_speech_multilingual, label=violent, score=0.999, threshold=0.60, latency_ms=79.2; no retrieval, no generation, nothing stored in memory
+[rag-guardrails] input blocked, stage='input', category='tone', verdict='offensive_input', detector=classifier, model=IMSyPP/hate_speech_multilingual, label=violent, score=0.999, threshold=0.60, latency_ms=79.2; no retrieval, no generation, nothing stored in memory
 ```
 
 `label` is the strongest blocking class and `score` is the **sum** of all of them.
@@ -232,3 +232,4 @@ it.
 - The register of the *assistant's* answer is not checked here: that is
   `output_tone`, which is an open issue in the same category and not built.
 - No per-class thresholds and no GPU selection.
+

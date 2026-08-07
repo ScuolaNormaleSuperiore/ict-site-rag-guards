@@ -13,7 +13,7 @@ from enum import Enum
 from cat.mad_hatter.decorators import plugin
 from pydantic import BaseModel, Field, field_validator
 
-# See ict_site_rag_guards.py for why both import forms are needed.
+# See rag_guardrails.py for why both import forms are needed.
 try:
     from .checks import (
         DEFAULT_MAX_MESSAGE_CHARS,
@@ -135,7 +135,7 @@ class OffensiveInputClassifierModel(str, Enum):
     TEXTDETOX_TOXICITY = "textdetox/bert-multilingual-toxicity-classifier"
 
 
-class IctSiteRagGuardsSettings(BaseModel):
+class RagGuardrailsSettings(BaseModel):
     help_desk_email: str = Field(
         default=DEFAULT_HELP_DESK_EMAIL,
         title="Help Desk e-mail",
@@ -168,7 +168,7 @@ class IctSiteRagGuardsSettings(BaseModel):
             "Sent when a message exceeds the maximum length. "
             "Use {help_desk_email} as a placeholder for the address above."
         ),
-        extra={"type": "TextArea"},
+        json_schema_extra={"type": "TextArea"},
     )
 
     detect_input_email: bool = Field(
@@ -233,7 +233,7 @@ class IctSiteRagGuardsSettings(BaseModel):
             "memory, which is true on this path: nothing is retrieved, nothing "
             "is generated, and nothing reaches the vector database."
         ),
-        extra={"type": "TextArea"},
+        json_schema_extra={"type": "TextArea"},
     )
 
     detect_output_email: bool = Field(
@@ -294,7 +294,7 @@ class IctSiteRagGuardsSettings(BaseModel):
             "personal data. Use {help_desk_email} as a placeholder for the "
             "address above."
         ),
-        extra={"type": "TextArea"},
+        json_schema_extra={"type": "TextArea"},
     )
 
     detect_prompt_injection_custom: bool = Field(
@@ -360,7 +360,7 @@ class IctSiteRagGuardsSettings(BaseModel):
             "was detected by the custom patterns or by the local classifier. "
             "Use {help_desk_email} as a placeholder for the address above."
         ),
-        extra={"type": "TextArea"},
+        json_schema_extra={"type": "TextArea"},
     )
 
     detect_offensive_input_classifier: bool = Field(
@@ -414,7 +414,7 @@ class IctSiteRagGuardsSettings(BaseModel):
             "Sent when the offensive-input check refuses a message. "
             "Use {help_desk_email} as a placeholder for the address above."
         ),
-        extra={"type": "TextArea"},
+        json_schema_extra={"type": "TextArea"},
     )
 
     @field_validator("help_desk_email")
@@ -489,4 +489,5 @@ class IctSiteRagGuardsSettings(BaseModel):
 @plugin
 def settings_model():
     """Return the Pydantic model the admin panel builds its form from."""
-    return IctSiteRagGuardsSettings
+    return RagGuardrailsSettings
+

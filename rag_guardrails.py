@@ -1,4 +1,4 @@
-"""Guardrail pipeline for a website ICT support chatbot: Cheshire Cat hooks.
+"""Guardrail pipeline for a website support chatbot: Cheshire Cat hooks.
 
 This module is the adapter between Cheshire Cat and the pure decision logic in
 `checks.py`. It reads from the Cat, loads the configuration, delegates every
@@ -75,7 +75,7 @@ try:
     from .classifier_runtime import classifier_load_error, redact_secrets
     from .offensive_input_classifier import classify_offensive_input
     from .prompt_injection_classifier import classify_prompt_injection
-    from .settings import IctSiteRagGuardsSettings
+    from .settings import RagGuardrailsSettings
 except ImportError:  # pragma: no cover - depends on how the module is loaded
     from checks import (
         CATEGORY_LIMITS,
@@ -100,7 +100,7 @@ except ImportError:  # pragma: no cover - depends on how the module is loaded
     from classifier_runtime import classifier_load_error, redact_secrets
     from offensive_input_classifier import classify_offensive_input
     from prompt_injection_classifier import classify_prompt_injection
-    from settings import IctSiteRagGuardsSettings
+    from settings import RagGuardrailsSettings
 
 # Where the verdict of the turn is recorded. `WorkingMemory` allows extra
 # attributes and lives for the whole session, so it is reset at the beginning of
@@ -172,7 +172,7 @@ _ANNOUNCED_CLASSIFIER_FAILURE: str | None = None
 _ANNOUNCED_OFFENSIVE_CLASSIFIER_FAILURE: str | None = None
 
 
-def load_settings(cat) -> IctSiteRagGuardsSettings:
+def load_settings(cat) -> RagGuardrailsSettings:
     """Return the plugin configuration, falling back to the model defaults.
 
     Never raises. A configuration problem must not take the guard down, and
@@ -186,20 +186,20 @@ def load_settings(cat) -> IctSiteRagGuardsSettings:
         stored = cat.mad_hatter.get_plugin().load_settings()
     except Exception as error:
         log.debug(
-            f"[ict-site-rag-guards] settings unavailable ({error}), using defaults"
+            f"[rag-guardrails] settings unavailable ({error}), using defaults"
         )
-        return IctSiteRagGuardsSettings()
+        return RagGuardrailsSettings()
 
     try:
-        return IctSiteRagGuardsSettings.model_validate(stored or {})
+        return RagGuardrailsSettings.model_validate(stored or {})
     except ValidationError as error:
         log.warning(
-            f"[ict-site-rag-guards] invalid settings, using defaults: {error}"
+            f"[rag-guardrails] invalid settings, using defaults: {error}"
         )
-        return IctSiteRagGuardsSettings()
+        return RagGuardrailsSettings()
 
 
-def _render(template: str, settings: IctSiteRagGuardsSettings) -> str:
+def _render(template: str, settings: RagGuardrailsSettings) -> str:
     """Insert the configured values into a reply text.
 
     A plain replace, not str.format: the text is edited by hand in the admin
@@ -209,7 +209,7 @@ def _render(template: str, settings: IctSiteRagGuardsSettings) -> str:
     return template.replace("{help_desk_email}", settings.help_desk_email)
 
 
-def reply_for(verdict: str, settings: IctSiteRagGuardsSettings) -> str | None:
+def reply_for(verdict: str, settings: RagGuardrailsSettings) -> str | None:
     """Return the configured reply for a verdict, or None if there is none.
 
     A verdict with no reply is a bug, not a valid state: the caller answers
@@ -218,7 +218,7 @@ def reply_for(verdict: str, settings: IctSiteRagGuardsSettings) -> str | None:
     setting_name = REPLY_SETTING_BY_VERDICT.get(verdict)
     if setting_name is None:
         log.warning(
-            f"[ict-site-rag-guards] no reply configured for verdict "
+            f"[rag-guardrails] no reply configured for verdict "
             f"'{verdict}', falling back to normal execution"
         )
         return None
@@ -226,7 +226,7 @@ def reply_for(verdict: str, settings: IctSiteRagGuardsSettings) -> str | None:
 
 
 def enabled_privacy_detectors(
-    settings: IctSiteRagGuardsSettings,
+    settings: RagGuardrailsSettings,
 ) -> tuple[str, ...]:
     """The input-side personal-data detectors currently switched on."""
     return tuple(
@@ -241,7 +241,7 @@ def enabled_privacy_detectors(
     )
 
 
-def output_privacy_checks_enabled(settings: IctSiteRagGuardsSettings) -> tuple[str, ...]:
+def output_privacy_checks_enabled(settings: RagGuardrailsSettings) -> tuple[str, ...]:
     """The output-side personal-data detectors currently switched on."""
     return tuple(
         name
@@ -255,7 +255,7 @@ def output_privacy_checks_enabled(settings: IctSiteRagGuardsSettings) -> tuple[s
     )
 
 
-def enabled_check_names(settings: IctSiteRagGuardsSettings) -> tuple[str, ...]:
+def enabled_check_names(settings: RagGuardrailsSettings) -> tuple[str, ...]:
     """Which input checks are effectively active, in the order they run.
 
     A check whose configuration disables it — a non-positive length limit, all
@@ -286,7 +286,7 @@ def enabled_check_names(settings: IctSiteRagGuardsSettings) -> tuple[str, ...]:
 
 
 def active_guards_summary(
-    settings: IctSiteRagGuardsSettings,
+    settings: RagGuardrailsSettings,
 ) -> tuple[str, tuple[str, ...]]:
     """The guard configuration as one line, plus the categories left uncovered.
 
@@ -350,7 +350,7 @@ def active_guards_summary(
     return f"{limits}, {privacy}, {security}, {tone}", uncovered
 
 
-def announce_active_guards(settings: IctSiteRagGuardsSettings) -> None:
+def announce_active_guards(settings: RagGuardrailsSettings) -> None:
     """Log the guard configuration once, and again whenever it changes.
 
     Not at every turn: on a message that passes, the plugin writes nothing at
@@ -370,17 +370,17 @@ def announce_active_guards(settings: IctSiteRagGuardsSettings) -> None:
 
     if uncovered:
         log.warning(
-            f"[ict-site-rag-guards] guards active: {summary}; "
+            f"[rag-guardrails] guards active: {summary}; "
             f"no guard covers: {', '.join(uncovered)}"
         )
     else:
-        log.info(f"[ict-site-rag-guards] guards active: {summary}")
+        log.info(f"[rag-guardrails] guards active: {summary}")
 
     _ANNOUNCED_GUARD_SUMMARY = summary
 
 
 def blocked_detail(
-    verdict: str, text: str, settings: IctSiteRagGuardsSettings
+    verdict: str, text: str, settings: RagGuardrailsSettings
 ) -> str:
     """Context for the log line, never the message itself.
 
@@ -458,7 +458,7 @@ def replace_message_text(message, text: str):
 
 
 def announce_classifier_failure(
-    error: Exception, settings: IctSiteRagGuardsSettings
+    error: Exception, settings: RagGuardrailsSettings
 ) -> None:
     """Report a fail-open classifier once, naming what still covers the turn.
 
@@ -494,14 +494,14 @@ def announce_classifier_failure(
         )
 
     log.warning(
-        f"[ict-site-rag-guards] prompt-injection classifier unavailable "
+        f"[rag-guardrails] prompt-injection classifier unavailable "
         f"({reported}), continuing without blocking; {remaining}. "
         "Not repeated until the plugin reloads"
     )
 
 
 def detect_prompt_injection_with_classifier(
-    text: str, settings: IctSiteRagGuardsSettings
+    text: str, settings: RagGuardrailsSettings
 ) -> dict[str, str | float] | None:
     """Run the local prompt-injection classifier, fail-open on any error."""
     if not settings.detect_prompt_injection_classifier:
@@ -540,7 +540,7 @@ def detect_prompt_injection_with_classifier(
 
 
 def announce_offensive_classifier_failure(
-    error: Exception, settings: IctSiteRagGuardsSettings
+    error: Exception, settings: RagGuardrailsSettings
 ) -> None:
     """Report a fail-open offensive-input classifier once, saying what is left.
 
@@ -562,7 +562,7 @@ def announce_offensive_classifier_failure(
     _ANNOUNCED_OFFENSIVE_CLASSIFIER_FAILURE = reported
 
     log.warning(
-        f"[ict-site-rag-guards] offensive-input classifier unavailable "
+        f"[rag-guardrails] offensive-input classifier unavailable "
         f"({reported}), continuing without blocking; no guard covers: "
         f"{CATEGORY_TONE} — this check has no deterministic fallback. "
         "Not repeated until the plugin reloads"
@@ -570,7 +570,7 @@ def announce_offensive_classifier_failure(
 
 
 def detect_offensive_input(
-    text: str, settings: IctSiteRagGuardsSettings
+    text: str, settings: RagGuardrailsSettings
 ) -> dict[str, str | float] | None:
     """Run the local offensive-input classifier, fail-open on any error.
 
@@ -625,7 +625,7 @@ def detect_offensive_input(
 HUGGINGFACE_TOKEN_VARIABLES = ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN")
 
 
-def resolve_huggingface_token(settings: IctSiteRagGuardsSettings) -> str | None:
+def resolve_huggingface_token(settings: RagGuardrailsSettings) -> str | None:
     """Return the Hugging Face token to use for gated models, if any.
 
     Environment variables take precedence over admin settings so deployments can
@@ -697,7 +697,7 @@ def guard_input_message(fast_reply, cat):
         # as a fast path. The classifier, when it runs, is three orders of
         # magnitude above that and stays readable either way.
         log.debug(
-            f"[ict-site-rag-guards] input allowed, "
+            f"[rag-guardrails] input allowed, "
             f"stage='{STAGE_INPUT}', "
             f"checks={'+'.join(enabled_check_names(settings)) or 'none'}, "
             f"latency_ms={elapsed_ms:.2f}"
@@ -715,7 +715,7 @@ def guard_input_message(fast_reply, cat):
     setattr(cat.working_memory, VERDICT_ATTRIBUTE, verdict)
 
     log.info(
-        f"[ict-site-rag-guards] input blocked, "
+        f"[rag-guardrails] input blocked, "
         f"stage='{stage_of(verdict)}', "
         f"category='{category_of(verdict)}', verdict='{verdict}'"
         f"{detail}, latency_ms={elapsed_ms:.2f}; "
@@ -762,7 +762,7 @@ def guard_output_message(message, cat):
     setattr(cat.working_memory, VERDICT_ATTRIBUTE, verdict)
 
     log.info(
-        f"[ict-site-rag-guards] output blocked, "
+        f"[rag-guardrails] output blocked, "
         f"stage='{stage_of(verdict)}', "
         f"category='{category_of(verdict)}', verdict='{verdict}'"
         f"{blocked_detail(verdict, text, settings)}, "
@@ -770,3 +770,4 @@ def guard_output_message(message, cat):
         "generated reply replaced before delivery"
     )
     return replace_message_text(message, reply)
+

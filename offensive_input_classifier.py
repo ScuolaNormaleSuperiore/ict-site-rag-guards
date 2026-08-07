@@ -38,7 +38,7 @@ DEFAULT_OFFENSIVE_INPUT_CLASSIFIER_THRESHOLD = 0.60
 # `id2label`, so the readable class names of the model cards exist nowhere at
 # runtime. Verified on the installed core on 2026-08-06, model by model, and the
 # ordering of the four IMSyPP classes was confirmed by inference — a legitimate
-# ICT question scores 0.99 on `LABEL_0`, an insult 0.98 on `LABEL_2`, a threat
+# question scores 0.99 on `LABEL_0`, an insult 0.98 on `LABEL_2`, a threat
 # 1.00 on `LABEL_3`.
 #
 # Keyed by what the pipeline returns, so a model that one day exposes readable
@@ -67,7 +67,7 @@ OFFENSIVE_INPUT_CLASSIFIER_CLASSES = {
 # refused without counting indices.
 #
 # `inappropriate` is deliberately absent, and it is a decision rather than an
-# omission: an ICT help desk receives exasperated users, and a message that is
+# omission: an help desk receives exasperated users, and a message that is
 # rude about a broken service is a support request written badly. Refusing it is
 # the kind of error that gets a guard switched off, which leaves no protection at
 # all. See DOC/ToneGuards.md.
@@ -131,7 +131,7 @@ def _warn_on_label_mismatch(model_name: str, pipeline) -> None:
         return
 
     runtime_log.warning(
-        f"[ict-site-rag-guards] offensive-input classifier model {model_name} "
+        f"[rag-guardrails] offensive-input classifier model {model_name} "
         f"returns labels {'+'.join(returned)}, none of which maps to a blocking "
         f"class ({'+'.join(blocking_classes(model_name)) or 'none configured'}); "
         "the check is enabled but cannot block anything. Its label mapping in "
@@ -205,3 +205,4 @@ def classify_offensive_input(
         "label": dominant_label,
         "score": total,
     }
+

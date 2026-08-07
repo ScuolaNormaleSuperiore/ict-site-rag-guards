@@ -1,6 +1,6 @@
 # Guard Taxonomy
 
-This document defines the taxonomy used by `ict-site-rag-guards` to describe
+This document defines the taxonomy used by `rag-guardrails` to describe
 guard activity in a way that stays stable across implementation changes.
 
 The taxonomy has three independent axes:
@@ -191,3 +191,4 @@ Examples:
   - `stage='retrieval'`
   - category depends on what it protects
   - verdict should name the specific retrieval control
+

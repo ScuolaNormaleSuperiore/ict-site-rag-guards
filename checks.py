@@ -11,7 +11,7 @@ Every check follows the same contract:
 
 It returns the name of a verdict when the message must be stopped, or None
 when the message passes. Mapping a verdict to the text sent to the user is not
-this module's job: it belongs to the hooks in `ict_site_rag_guards.py`.
+this module's job: it belongs to the hooks in `rag_guardrails.py`.
 
 Keeping this signature uniform across checks is what will later allow the
 checks to be iterated over, enabled or reordered from configuration without
@@ -547,3 +547,4 @@ def run_input_checks(text: str, config: Any) -> str | None:
         if verdict is not None:
             return verdict
     return None
+

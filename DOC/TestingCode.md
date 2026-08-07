@@ -8,7 +8,7 @@ Guardrails fail silently: when a control stops working the chatbot does not rais
 | --- | --- | --- |
 | `checks.py` | All decision logic: thresholds, verdicts, rules. Imports nothing from `cat` | No |
 | `settings.py` | The settings model the admin form is built from, and the shipped defaults | Yes |
-| `ict_site_rag_guards.py` | The hooks only: read from the Cat, delegate to `checks`, write back | Yes |
+| `rag_guardrails.py` | The hooks only: read from the Cat, delegate to `checks`, write back | Yes |
 | `tests/unit/` | Pure logic and shipped metadata. Plain `pytest`, no Cheshire Cat at all | No |
 | `tests/integration/` | Hook wiring and configuration, against a fake `cat` object | Yes |
 
@@ -16,7 +16,7 @@ The test folders are the classification: what goes in `tests/unit/` must import 
 
 `tests/integration/` needs the core only because the module under test imports `cat.log` and `cat.mad_hatter.decorators` at import time, not because a Cat must be running. Those tests never contact a live instance: the container is used as an interpreter, not as a server. Automated tests against a running instance do not exist yet; see `What is not automated` below.
 
-One thing to know before adding files here: the Cat imports every `.py` it finds in the plugin folder, recursively, including `tests/`, and it does so under a package name where a bare `import checks` does not resolve. Left alone, that makes the core log `Unable to load plugin ict-site-rag-guards` on every activation. Both test modules therefore put the plugin folder on `sys.path` before importing, which keeps a genuine breakage failing rather than skipping. It is also why `pytest.ini` and the two runner scripts are deliberately not Python files.
+One thing to know before adding files here: the Cat imports every `.py` it finds in the plugin folder, recursively, including `tests/`, and it does so under a package name where a bare `import checks` does not resolve. Left alone, that makes the core log `Unable to load plugin rag-guardrails` on every activation. Both test modules therefore put the plugin folder on `sys.path` before importing, which keeps a genuine breakage failing rather than skipping. It is also why `pytest.ini` and the two runner scripts are deliberately not Python files.
 
 The `@hook` decorator turns functions into non-callable `CatHook` objects. Tests reach the real function through `.function`.
 
@@ -71,7 +71,7 @@ python -m pytest tests/unit
 In the container:
 
 ```bash
-docker compose exec -w /app/cat/plugins/ict-site-rag-guards cheshire-cat-core python -m pytest
+docker compose exec -w /app/cat/plugins/rag-guardrails cheshire-cat-core python -m pytest
 ```
 
 From Git Bash on Windows that same direct `docker compose exec -w ...` command fails with `Cwd must be an absolute path`, because the shell rewrites the `-w` path. `run-tests.py` handles that case automatically.
@@ -162,7 +162,7 @@ Suggested procedure:
 5. Confirm in `docker compose logs -f cheshire-cat-core` that the block line is the output-side one:
 
 ```text
-[ict-site-rag-guards] output blocked, stage='output', category='privacy', verdict='output_personal_data', ...
+[rag-guardrails] output blocked, stage='output', category='privacy', verdict='output_personal_data', ...
 ```
 
 6. Repeat once with the relevant output detector disabled and confirm that the reply is no longer replaced by this plugin.
@@ -170,3 +170,4 @@ Suggested procedure:
 This check matters because only a running instance proves that the hook is
 actually intercepting the final outgoing message object at the right point in
 the Cheshire Cat flow.
+

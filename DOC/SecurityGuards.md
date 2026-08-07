@@ -1,7 +1,7 @@
 # Security Guards
 
 This document explains the security-oriented guards currently implemented in
-`ict-site-rag-guards`, with a detailed focus on the prompt injection guard
+`rag-guardrails`, with a detailed focus on the prompt injection guard
 introduced in v1.
 
 ## Prompt Injection Guard v1
@@ -127,7 +127,7 @@ authorisation failure, so whoever reads the warning does not have to find this
 document:
 
 ```
-[ict-site-rag-guards] failed to load classifier model meta-llama/Llama-Prompt-Guard-2-86M: 401 Client Error … ; it will not be retried until the plugin reloads. This model needs authorised access, so the fix is not technical: 1) accept the model terms at https://huggingface.co/meta-llama/Llama-Prompt-Guard-2-86M and wait for approval, which for the Meta models is granted manually and is not immediate; 2) set the HF_TOKEN environment variable to a Hugging Face read token, or fill in the token field in the plugin settings, then restart the container …
+[rag-guardrails] failed to load classifier model meta-llama/Llama-Prompt-Guard-2-86M: 401 Client Error … ; it will not be retried until the plugin reloads. This model needs authorised access, so the fix is not technical: 1) accept the model terms at https://huggingface.co/meta-llama/Llama-Prompt-Guard-2-86M and wait for approval, which for the Meta models is granted manually and is not immediate; 2) set the HF_TOKEN environment variable to a Hugging Face read token, or fill in the token field in the plugin settings, then restart the container …
 ```
 
 That guidance is appended only when the error text looks like an authorisation
@@ -294,9 +294,10 @@ from the local Hugging Face disk cache.
 This first version is intentionally narrow.
 
 - The custom detector is conservative and catches explicit attempts only.
-- The classifier is local and model-based, but its real precision on this ICT
+- The classifier is local and model-based, but its real precision on this 
   corpus must be measured rather than assumed.
 - The guard covers direct prompt injection on the user message, not indirect
   prompt injection through retrieved documents.
 - Different thresholds per model, GPU selection, and structured telemetry are
   outside the scope of v1.
+

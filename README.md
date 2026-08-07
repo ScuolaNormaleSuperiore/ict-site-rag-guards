@@ -53,7 +53,7 @@ fastest way to see what the plugin does today.
 The plugin is split into a small number of focused parts:
 
 - `checks.py`: pure decision logic, with no imports from `cat`
-- `ict_site_rag_guards.py`: Cheshire Cat hooks, settings loading and log wiring
+- `rag_guardrails.py`: Cheshire Cat hooks, settings loading and log wiring
 - `classifier_runtime.py`: shared runtime support for local classifiers, including pipeline cache and negative cache on failed loads
 - `prompt_injection_classifier.py`: model-specific wrapper for the prompt-injection classifier
 - `offensive_input_classifier.py`: model-specific wrapper for the offensive-input classifier
@@ -183,7 +183,7 @@ Main files:
 - `prompt_injection_classifier.py`: one expected label against a threshold
 - `offensive_input_classifier.py`: the sum of a model's offensive classes against a threshold
 - `settings.py`: plugin settings model and shipped defaults
-- `ict_site_rag_guards.py`: Cheshire Cat hooks and settings loading
+- `rag_guardrails.py`: Cheshire Cat hooks and settings loading
 - `tests/`: the test suite, described in [DOC/TestingCode.md](DOC/TestingCode.md)
 
 Project-specific architecture notes and development guidance live under
@@ -302,3 +302,4 @@ no code change.
 ### Runtime dependencies
 
 Declared in `requirements.txt`, all GPL-compatible: `phonenumberslite` (Apache-2.0), `transformers` (Apache-2.0), `torch` (BSD-3-Clause).
+

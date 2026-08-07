@@ -153,7 +153,7 @@ def get_pipeline(model_name: str, token: str | None = None, **pipeline_kwargs):
         # demoting it to DEBUG once real traffic shows whether it is noise.
         # See DOC/SecurityGuards.md, section *Logging and measurement*.
         runtime_log.info(
-            "[ict-site-rag-guards] classifier pipeline cache hit "
+            "[rag-guardrails] classifier pipeline cache hit "
             f"for model {model_name}"
         )
         return pipeline
@@ -167,7 +167,7 @@ def get_pipeline(model_name: str, token: str | None = None, **pipeline_kwargs):
     from transformers import pipeline as transformers_pipeline
 
     runtime_log.info(
-        "[ict-site-rag-guards] loading classifier model "
+        "[rag-guardrails] loading classifier model "
         f"{model_name} into memory; Transformers will use the local Hugging Face "
         "cache when available and download missing files if needed"
     )
@@ -185,14 +185,14 @@ def get_pipeline(model_name: str, token: str | None = None, **pipeline_kwargs):
         reason = redact_secrets(str(error), token)
         _FAILED_CLASSIFIER_MODELS[model_name] = reason
         runtime_log.warning(
-            "[ict-site-rag-guards] failed to load classifier "
+            "[rag-guardrails] failed to load classifier "
             f"model {model_name}: {reason}; it will not be retried until the "
             f"plugin reloads.{access_remediation(model_name, error)}"
         )
         raise
 
     runtime_log.info(
-        "[ict-site-rag-guards] classifier model "
+        "[rag-guardrails] classifier model "
         f"{model_name} loaded and cached in memory"
     )
     _CLASSIFIER_PIPELINES[model_name] = pipeline
@@ -216,3 +216,4 @@ def model_labels(pipeline) -> tuple[str, ...]:
     except AttributeError:  # pragma: no cover - defensive, all models carry it
         return ()
     return tuple(str(id2label[index]) for index in sorted(id2label))
+
