@@ -160,179 +160,113 @@ class RagGuardrailsSettings(BaseModel):
     help_desk_email: str = Field(
         default=DEFAULT_HELP_DESK_EMAIL,
         title="Help Desk e-mail",
-        # description=(
-            # "Address offered to the user when a request cannot be answered. "
-            # "Write {help_desk_email} in any reply below to have it inserted here."
-        # ),
+        description=(
+            "Address offered to the user when "
+            "a request cannot be answered. "
+            "Write {help_desk_email} in any reply "
+            "below to have it inserted here."
+        ),
     )
 
     public_service_contacts: str = Field(
         default="",
-        title="Privacy guards: public service contacts (not treated as personal data)",
-        # description=(
-            # "Published service contacts, one per line, exempt from the privacy "
-            # "guards on both stages. List only genuinely public ones."
-        # ),
+        title="Privacy guards: allowed contacts",
+        description=(
+            "One per line or comma separated"
+        ),
         json_schema_extra=TEXT_AREA,
     )
 
     max_message_chars: int = Field(
         default=DEFAULT_MAX_MESSAGE_CHARS,
         ge=0,
-        title="Limits guard: maximum message length (characters)",
-        # description=(
-            # "Longer messages get a static reply without reaching the model. 0 "
-            # "disables the check. Keep it below Rate Limiter's max_prompt_length."
-        # ),
+        title="Limits guard: max message chars",
+        description=(
+            "0 disables the check."
+        ),
     )
 
     message_too_long: str = Field(
         default=DEFAULT_MESSAGE_TOO_LONG,
-        title="Limits guard: reply — message too long",
-        # description=(
-            # "Sent when a message exceeds the maximum length. "
-            # "Use {help_desk_email} as a placeholder for the address above."
-        # ),
+        title="Limits guard: max chars number exceeded message",
         json_schema_extra=TEXT_AREA,
     )
 
     detect_input_email: bool = Field(
         default=True,
-        title="Input privacy guard: block e-mail addresses",
-        # description=(
-            # "Refuses messages containing an e-mail address. The Help Desk "
-            # "address and the public contacts above are exempt."
-        # ),
+        title="Input privacy guard: block e-mail",
     )
 
     detect_input_codice_fiscale: bool = Field(
         default=True,
-        title="Input privacy guard: block codice fiscale",
-        # description=(
-            # "Refuses messages containing a codice fiscale. The check character "
-            # "is verified, so a lookalike string does not trigger a refusal."
-        # ),
+        title="Input privacy guard: block fiscal code",
     )
 
     detect_input_iban: bool = Field(
         default=True,
-        title="Input privacy guard: block IBAN",
-        # description=(
-            # "Refuses messages containing an IBAN. The mod-97 check digits are "
-            # "verified, so an invalid IBAN does not trigger a refusal."
-        # ),
+        title="Input privacy guard: IBAN",
     )
 
     detect_input_phone: bool = Field(
         default=True,
         title="Input privacy guard: block phone numbers",
-        # description=(
-            # "Refuses messages containing a phone number, validated against the "
-            # "numbering plan below. All four detectors off disables the check."
-        # ),
     )
 
     input_phone_region: str = Field(
         default=DEFAULT_PHONE_REGION,
-        title="Input privacy guard: region for phone numbers written without a prefix",
-        # description=(
-            # "Two-letter country code, for example IT. Numbers written with an "
-            # "international prefix are recognised whatever this value is."
-        # ),
+        title="Input privacy guard: phone numbers region",
     )
 
     personal_data_detected: str = Field(
         default=DEFAULT_PERSONAL_DATA_DETECTED,
-        title="Privacy guard: reply — personal data detected",
-        # description=(
-            # "Sent when a message is refused for containing personal data. "
-            # "Use {help_desk_email} as a placeholder for the address above."
-        # ),
+        title="Privacy guard: personal data detected reply",
         json_schema_extra=TEXT_AREA,
     )
 
     detect_output_email: bool = Field(
         default=True,
-        title="Output privacy guard: block e-mail addresses",
-        # description=(
-            # "Refuses to send a generated reply containing an e-mail address. "
-            # "The Help Desk address and the public contacts above are exempt."
-        # ),
+        title="Output privacy guard: block e-mail",
     )
 
     detect_output_codice_fiscale: bool = Field(
         default=True,
-        title="Output privacy guard: block codice fiscale",
-        # description=(
-            # "Refuses to send a generated reply containing a codice fiscale. "
-            # "The check character is verified."
-        # ),
+        title="Output privacy guard: block fiscal code",
     )
 
     detect_output_iban: bool = Field(
         default=True,
         title="Output privacy guard: block IBAN",
-        # description=(
-            # "Refuses to send a generated reply containing an IBAN. The mod-97 "
-            # "check digits are verified, so an invalid IBAN does not trigger a "
-            # "refusal."
-        # ),
     )
 
     detect_output_phone: bool = Field(
         default=True,
         title="Output privacy guard: block phone numbers",
-        # description=(
-            # "Refuses to send a generated reply containing a phone number, "
-            # "validated against the numbering plan below."
-        # ),
     )
 
     output_phone_region: str = Field(
         default=DEFAULT_PHONE_REGION,
-        title="Output privacy guard: region for phone numbers written without a prefix",
-        # description=(
-            # "Two-letter country code, for example IT, for phone numbers in "
-            # "generated replies written without an international prefix."
-        # ),
+        title="Output privacy guard: phone numbers region",
     )
 
     output_personal_data_detected: str = Field(
         default=DEFAULT_OUTPUT_PERSONAL_DATA_DETECTED,
-        title="Output privacy guard: reply — outgoing personal data detected",
-        # description=(
-            # "Sent when a generated reply is replaced because it contains "
-            # "personal data. Use {help_desk_email} as a placeholder for the "
-            # "address above."
-        # ),
+        title="Output privacy guard: personal data detected reply",
         json_schema_extra=TEXT_AREA,
     )
 
     detect_prompt_injection_custom: bool = Field(
         default=True,
-        title="Security guard: block explicit prompt injection patterns",
-        # description=(
-            # "Refuses messages that try to override instructions or reveal "
-            # "hidden prompts, using a built-in bilingual pattern set."
-        # ),
+        title="Security guard: block prompt injection patterns",
     )
 
     detect_prompt_injection_classifier: bool = Field(
         default=False,
         title="Security guard: block prompt injection with local classifier",
-        # description=(
-            # "Runs a local model after the pattern detector. Ships off: it needs "
-            # "a model download. On failure the message continues, with a warning."
-        # ),
     )
 
     prompt_injection_classifier_model: PromptInjectionClassifierModel = Field(
         default=PromptInjectionClassifierModel(DEFAULT_PROMPT_INJECTION_CLASSIFIER_MODEL),
         title="Security guard: prompt injection classifier model",
-        # description=(
-            # "Local model used by the prompt injection classifier. The default "
-            # "is preferred for Italian and English support messages."
-        # ),
     )
 
     prompt_injection_classifier_threshold: float = Field(
@@ -340,47 +274,27 @@ class RagGuardrailsSettings(BaseModel):
         ge=0.0,
         le=1.0,
         title="Security guard: prompt injection classifier threshold",
-        # description=(
-            # "Minimum classifier confidence needed to block a message. Higher "
-            # "values are more conservative and usually reduce false positives."
-        # ),
     )
 
     huggingface_token: str = Field(
         default="",
         title="Security guard: Hugging Face token",
-        # description=(
-            # "Optional token for gated models. Prefer the HF_TOKEN environment "
-            # "variable: it wins over this field and stays out of settings.json."
-        # ),
     )
 
     prompt_injection_detected: str = Field(
         default=DEFAULT_PROMPT_INJECTION_DETECTED,
-        title="Security guard: reply — prompt injection detected",
-        # description=(
-            # "Sent when the prompt injection guard blocks a message. "
-            # "Use {help_desk_email} as a placeholder for the address above."
-        # ),
+        title="Security guard: prompt injection reply",
         json_schema_extra=TEXT_AREA,
     )
 
     detect_offensive_input_classifier: bool = Field(
         default=False,
-        title="Tone guard: block offensive incoming messages with local classifier",
-        # description=(
-            # "Refuses offensive or violent messages with a local model. Ships "
-            # "off: it loads a second model and its precision is not yet measured."
-        # ),
+        title="Tone guard: block offensive incoming messages",
     )
 
     offensive_input_classifier_model: OffensiveInputClassifierModel = Field(
         default=OffensiveInputClassifierModel(DEFAULT_OFFENSIVE_INPUT_CLASSIFIER_MODEL),
         title="Tone guard: offensive input classifier model",
-        # description=(
-            # "Local model used by the offensive-input check. The default is "
-            # "multilingual and covers Italian and English."
-        # ),
     )
 
     offensive_input_classifier_threshold: float = Field(
@@ -388,19 +302,11 @@ class RagGuardrailsSettings(BaseModel):
         ge=0.0,
         le=1.0,
         title="Tone guard: offensive input classifier threshold",
-        # description=(
-            # "Minimum confidence needed to refuse. Careful: compared against the "
-            # "SUM of the offensive classes, so stricter than it looks."
-        # ),
     )
 
     offensive_input_detected: str = Field(
         default=DEFAULT_OFFENSIVE_INPUT_DETECTED,
-        title="Tone guard: reply — offensive content detected",
-        # description=(
-            # "Sent when the offensive-input check refuses a message. "
-            # "Use {help_desk_email} as a placeholder for the address above."
-        # ),
+        title="Tone guard: offensive content reply",
         json_schema_extra=TEXT_AREA,
     )
 
