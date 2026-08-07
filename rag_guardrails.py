@@ -68,6 +68,7 @@ try:
         extract_text,
         matched_personal_data_kinds,
         matched_prompt_injection_pattern,
+        parse_public_contacts,
         phone_number_types,
         run_input_checks,
         stage_of,
@@ -93,6 +94,7 @@ except ImportError:  # pragma: no cover - depends on how the module is loaded
         extract_text,
         matched_personal_data_kinds,
         matched_prompt_injection_pattern,
+        parse_public_contacts,
         phone_number_types,
         run_input_checks,
         stage_of,
@@ -405,6 +407,8 @@ def blocked_detail(
             detect_phone = settings.detect_output_phone
             phone_region = settings.output_phone_region
 
+        public_contacts = parse_public_contacts(settings.public_service_contacts)
+
         kinds = matched_personal_data_kinds(
             text,
             detect_email=detect_email,
@@ -413,13 +417,16 @@ def blocked_detail(
             detect_phone=detect_phone,
             allowed_email=settings.help_desk_email,
             phone_region=phone_region,
+            public_contacts=public_contacts,
         )
         detail = f", detected={'+'.join(kinds)}"
 
         # The kind of number is useful to whoever reads the logs, and is not a
-        # setting: see the note on `phone_number_types`.
+        # setting: see the note on `phone_number_types`. The public contacts go
+        # in here too, so a block caused by a personal number does not report
+        # the type of an exempt number sitting in the same sentence.
         if "phone" in kinds:
-            types = phone_number_types(text, phone_region)
+            types = phone_number_types(text, phone_region, public_contacts)
             detail += f" ({'+'.join(sorted(set(types)))})"
 
         return detail
@@ -751,6 +758,7 @@ def guard_output_message(message, cat):
         detect_phone=settings.detect_output_phone,
         allowed_email=settings.help_desk_email,
         phone_region=settings.output_phone_region,
+        public_contacts=parse_public_contacts(settings.public_service_contacts),
     )
     if verdict is None:
         return message

@@ -46,12 +46,21 @@ from checks import (  # noqa: E402
     extract_text,
     matched_personal_data_kinds,
     matched_prompt_injection_pattern,
+    parse_public_contacts,
     phone_number_types,
     run_input_checks,
     stage_of,
 )
 
 HELP_DESK = "helpdesk@example.org"
+
+# A published service landline and a personal mobile. Both are valid against
+# the Italian numbering plan, which is what makes the pair meaningful: the
+# exemption has to tell them apart by identity, not by shape.
+PUBLIC_LANDLINE = "050 509111"
+PUBLIC_LANDLINE_E164 = "+39050509111"
+PERSONAL_MOBILE = "3401234567"
+PUBLIC_ADDRESS = "urp@example.org"
 
 # Codice fiscali whose check character is correct. The first two are the
 # vectors validator libraries use; the third is a female code, where the day
@@ -82,6 +91,7 @@ def config(**overrides):
         "detect_input_phone": True,
         "help_desk_email": HELP_DESK,
         "input_phone_region": "IT",
+        "public_service_contacts": "",
         "detect_prompt_injection_custom": True,
     }
     values.update(overrides)
@@ -222,6 +232,94 @@ class TestCheckPersonalData:
         # A mistyped region must not break every message. The settings model
         # rejects the typo first; this is the second line of defence.
         assert check_personal_data("tel 050 509111", phone_region="ZZ") is None
+
+    def test_a_public_contact_is_not_personal_data(self):
+        # The case the feature exists for: the model answering with the service
+        # number it was instructed to offer must not be replaced by a fallback.
+        contacts = (PUBLIC_LANDLINE, PUBLIC_ADDRESS)
+        message = f"Puoi chiamare lo {PUBLIC_LANDLINE} o scrivere a {PUBLIC_ADDRESS}"
+
+        assert check_personal_data(message, public_contacts=contacts) is None
+        assert check_output_personal_data(message, public_contacts=contacts) is None
+
+    @pytest.mark.parametrize(
+        "listed, written",
+        [
+            (PUBLIC_LANDLINE, PUBLIC_LANDLINE_E164),
+            (PUBLIC_LANDLINE_E164, PUBLIC_LANDLINE),
+            (PUBLIC_LANDLINE_E164, "050-509111"),
+            ("+390505091 11", PUBLIC_LANDLINE),
+        ],
+    )
+    def test_a_listed_number_matches_however_either_side_is_written(
+        self, listed, written
+    ):
+        # Comparing the strings would fail every one of these pairs: the
+        # exemption normalises both sides to E.164 before comparing.
+        assert check_personal_data(
+            f"Il numero è {written}", public_contacts=(listed,)
+        ) is None
+
+    def test_a_personal_number_alongside_a_public_one_still_blocks(self):
+        # The property that keeps the exemption from becoming a hole: excluding
+        # at match time leaves the personal number in the result.
+        message = f"Ufficio {PUBLIC_LANDLINE}, il mio cellulare è {PERSONAL_MOBILE}"
+
+        assert check_personal_data(
+            message, public_contacts=(PUBLIC_LANDLINE,)
+        ) == VERDICT_PERSONAL_DATA
+
+    def test_a_personal_address_alongside_a_public_one_still_blocks(self):
+        message = f"Ho scritto a {PUBLIC_ADDRESS} da mario.rossi@sns.it"
+
+        assert check_personal_data(
+            message, public_contacts=(PUBLIC_ADDRESS,)
+        ) == VERDICT_PERSONAL_DATA
+
+    def test_the_help_desk_address_stays_exempt_without_being_listed(self):
+        # Editing the contacts list must not be able to turn the Help Desk
+        # address back into personal data: every static reply points at it.
+        message = f"Ho scritto a {HELP_DESK}"
+
+        assert check_personal_data(
+            message, allowed_email=HELP_DESK, public_contacts=(PUBLIC_ADDRESS,)
+        ) is None
+
+    def test_an_entry_that_does_not_parse_is_ignored_rather_than_raising(self):
+        # A guard must not stop working because one line of configuration is
+        # wrong. The settings model rejects rubbish first; this is the fallback.
+        assert check_personal_data(
+            f"Il mio cellulare è {PERSONAL_MOBILE}",
+            public_contacts=("not a number", "", "+39"),
+        ) == VERDICT_PERSONAL_DATA
+
+    def test_a_public_number_is_still_found_under_a_different_region(self):
+        # The list is shared by both stages but the region is not, so the same
+        # entry can resolve differently. Written without a prefix, it does.
+        message = f"Il numero è {PUBLIC_LANDLINE}"
+
+        assert check_personal_data(
+            message, phone_region="IT", public_contacts=(PUBLIC_LANDLINE,)
+        ) is None
+        assert check_personal_data(
+            message, phone_region="IT", public_contacts=(PUBLIC_LANDLINE_E164,)
+        ) is None
+
+
+class TestParsePublicContacts:
+    def test_newlines_and_commas_both_separate(self):
+        assert parse_public_contacts(
+            f"{PUBLIC_ADDRESS}, {PUBLIC_LANDLINE}\n{PUBLIC_LANDLINE_E164}"
+        ) == (PUBLIC_ADDRESS, PUBLIC_LANDLINE, PUBLIC_LANDLINE_E164)
+
+    def test_blank_lines_and_surrounding_spaces_are_dropped(self):
+        assert parse_public_contacts(
+            f"  {PUBLIC_ADDRESS}  \n\n\n   \n{PUBLIC_LANDLINE}\n"
+        ) == (PUBLIC_ADDRESS, PUBLIC_LANDLINE)
+
+    def test_an_empty_field_yields_no_contacts(self):
+        assert parse_public_contacts("") == ()
+        assert parse_public_contacts("   \n  ") == ()
 
     @pytest.mark.parametrize(
         "toggle, message",
@@ -451,6 +549,17 @@ class TestPhoneNumberTypes:
 
     def test_reports_nothing_when_there_is_no_number(self):
         assert phone_number_types("Come attivo la VPN?") == ()
+
+    def test_an_exempt_number_is_not_named_in_the_log(self):
+        # The log has to describe the violation that occurred, not a wider one:
+        # a block caused by the mobile must not also report the service
+        # landline that happens to sit in the same sentence.
+        message = f"Ufficio {PUBLIC_LANDLINE}, cellulare {PERSONAL_MOBILE}"
+
+        assert phone_number_types(message) == ("fixed_line", "mobile")
+        assert phone_number_types(
+            message, public_contacts=(PUBLIC_LANDLINE,)
+        ) == ("mobile",)
 
 
 class TestMatchedPersonalDataKinds:

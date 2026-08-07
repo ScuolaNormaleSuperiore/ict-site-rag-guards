@@ -73,6 +73,24 @@ which Cheshire Cat AI installs on activation. It currently declares
 `phonenumberslite` for phone-number validation and `transformers` plus `torch`
 for the optional local classifiers.
 
+Three things about that file are deliberate, and the first one is a trap worth
+knowing before editing it:
+
+- **It carries no comments and no blank lines.** Cheshire Cat AI does not hand
+  the file to pip: it calls `packaging.Requirement()` on every line, inside a
+  `try` that abandons the whole loop on the first failure. A comment is valid
+  for pip and fatal here — it makes the core install *no* dependency at all,
+  logging one error while activation continues, so the plugin then works on a
+  machine that already has the packages and fails at import on a clean one.
+- **`phonenumberslite`, not `phonenumbers`.** The full package carries
+  geocoding, carrier and timezone data for 20.9 MB installed, none of which is
+  used here; the lite build is 2.2 MB and provides the parsing and validation
+  the personal-data guard needs.
+- **No `==` pins.** The core compares only the package name against what is
+  already installed and ignores the version, so an exact pin is skipped in
+  silence when another plugin installed a different one — and breaks that
+  plugin if this one is activated first.
+
 Sharing an installation with other plugins is supported: when one of its own checks does not trigger, a reply another plugin has already produced is passed through untouched.
 
 ## Installation
@@ -92,6 +110,7 @@ Settings are named after the guard family they belong to, so related options
 read together in the form:
 
 - `Help Desk e-mail`
+- `Privacy guards: public service contacts (not treated as personal data)`
 - `Limits guard: maximum message length (characters)`
 - `Limits guard: reply — message too long`
 - `Input privacy guard: block e-mail addresses`
@@ -127,6 +146,31 @@ still has to be measured. Everything else ships enabled.
 
 The shipped default Help Desk address is a placeholder and should be replaced
 for real deployments.
+
+### If the Rate Limiter plugin is also installed
+
+Keep `Limits guard: maximum message length` **below** Rate Limiter's own
+`max_prompt_length`. The two guards overlap, and the order in which they run
+decides more than which text the user sees.
+
+For a message longer than Rate Limiter's limit but shorter than this one, Rate
+Limiter is the plugin that answers, with its own text. It also records a content
+infraction and suspends the user for 5, 15 or 60 minutes, silently blocking
+their next legitimate messages. Nothing in this plugin can undo that, because
+the side effect happens before this plugin's reply is delivered.
+
+Keeping this limit lower means an over-long message is refused here first, with
+an explanation of what to correct and no suspension.
+
+`Privacy guards: public service contacts` ships **empty**, and is the one
+setting shared by the input and output privacy guards rather than duplicated per
+stage. Contacts listed there — one per line, e-mail addresses and phone numbers
+together — are not treated as personal data on either stage, which is what lets
+the assistant give out the Help Desk number without the answer being replaced by
+the fallback. The Help Desk address is always exempt and does not need to be
+listed. Every entry is a deliberate hole in the privacy guards, so list only
+genuinely published contacts; the details are in
+[DOC/OutputGuards.md](https://github.com/ScuolaNormaleSuperiore/rag-guardrails/blob/main/DOC/OutputGuards.md).
 
 ## How It Works
 

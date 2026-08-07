@@ -21,7 +21,7 @@ rewriting them.
 
 import re
 import unicodedata
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 import phonenumbers
 from phonenumbers import Leniency, PhoneNumberMatcher, PhoneNumberType
@@ -358,23 +358,94 @@ def _is_valid_iban(candidate: str) -> bool:
     return int(digits) % 97 == 1
 
 
+def parse_public_contacts(raw: str) -> tuple[str, ...]:
+    """Split the configured public contacts into individual entries.
+
+    Both newlines and commas separate, because the admin field is a free text
+    area and neither convention is more natural than the other for a list that
+    mixes e-mail addresses and phone numbers.
+    """
+    separated = raw.replace(",", "\n") if raw else ""
+    return tuple(entry.strip() for entry in separated.splitlines() if entry.strip())
+
+
+def _allowed_email_addresses(
+    allowed_email: str, public_contacts: Sequence[str] = ()
+) -> frozenset[str]:
+    """The addresses that are not personal data, lowercased for comparison.
+
+    The Help Desk address is always in here, and deliberately not read from the
+    public-contacts list: an administrator editing that list must not be able
+    to turn the Help Desk address back into personal data by accident, since
+    every static reply invites the user to write to it.
+    """
+    allowed = {entry.strip().lower() for entry in public_contacts if "@" in entry}
+    if allowed_email.strip():
+        allowed.add(allowed_email.strip().lower())
+    return frozenset(allowed)
+
+
+def _e164(number: phonenumbers.PhoneNumber) -> str:
+    return phonenumbers.format_number(number, phonenumbers.PhoneNumberFormat.E164)
+
+
+def _allowed_phone_numbers(
+    public_contacts: Sequence[str], region: str
+) -> frozenset[str]:
+    """The numbers that are not personal data, normalised to E.164.
+
+    Comparing the text as written would not work: `050 509111`, `050-509111`
+    and `+39050509111` are one number and three strings. Parsing both sides to
+    E.164 is what makes the entry match however either side is spelled.
+
+    An entry that does not parse, or that the numbering plan rejects, is
+    dropped rather than raising: the settings model already refuses obvious
+    rubbish at save time, and a guard must not stop working because one line of
+    configuration is wrong.
+    """
+    allowed = set()
+    for entry in public_contacts:
+        entry = entry.strip()
+        if not entry or "@" in entry:
+            continue
+        try:
+            parsed = phonenumbers.parse(entry, region)
+        except phonenumbers.NumberParseException:
+            continue
+        if phonenumbers.is_valid_number(parsed):
+            allowed.add(_e164(parsed))
+    return frozenset(allowed)
+
+
 def found_phone_numbers(
-    text: str, region: str = DEFAULT_PHONE_REGION
+    text: str,
+    region: str = DEFAULT_PHONE_REGION,
+    public_contacts: Sequence[str] = (),
 ) -> tuple[str, ...]:
     """Phone numbers in free text that the numbering plan of `region` accepts.
 
     An unknown region yields no matches rather than an error, which is the
     library's own behaviour and the one we want: a mistyped region must not
     break every message. The settings model validates the shape as well.
+
+    Numbers listed as public service contacts are excluded here, at the point
+    of matching, rather than by forgiving a verdict afterwards. That ordering is
+    what keeps the exemption safe: a text carrying a public number *and* a
+    personal one still leaves the personal one in the result, so it still
+    blocks.
     """
+    allowed = _allowed_phone_numbers(public_contacts, region)
     return tuple(
         match.raw_string
         for match in PhoneNumberMatcher(text, region, leniency=_PHONE_LENIENCY)
+        if _e164(match.number) not in allowed
     )
 
 
 def phone_number_types(
-    text: str, region: str = DEFAULT_PHONE_REGION
+    text: str,
+    region: str = DEFAULT_PHONE_REGION,
+    public_contacts: Sequence[str] = (),
 ) -> tuple[str, ...]:
     """Kinds of number found — `fixed_line`, `mobile` — for the log only.
 
@@ -382,10 +453,18 @@ def phone_number_types(
     logs, and useless as a control. Landline against mobile is a technical
     category, while the privacy question is published against personal, and a
     home landline falls on the wrong side of that mapping.
+
+    Public service contacts are excluded here for the same reason they are
+    excluded from the detector: a block caused by a personal number must not
+    describe itself in the log as also involving the Help Desk number that
+    happened to sit in the same sentence. The log has to name the violation
+    that occurred, not a wider one.
     """
+    allowed = _allowed_phone_numbers(public_contacts, region)
     return tuple(
         _PHONE_TYPE_NAMES.get(phonenumbers.number_type(match.number), "unknown")
         for match in PhoneNumberMatcher(text, region, leniency=_PHONE_LENIENCY)
+        if _e164(match.number) not in allowed
     )
 
 
@@ -397,6 +476,7 @@ def matched_personal_data_kinds(
     detect_phone: bool = True,
     allowed_email: str = "",
     phone_region: str = DEFAULT_PHONE_REGION,
+    public_contacts: Sequence[str] = (),
 ) -> tuple[str, ...]:
     """Return the names of the detectors that match, for logging.
 
@@ -408,11 +488,13 @@ def matched_personal_data_kinds(
     matched = []
 
     if detect_email:
-        allowed = allowed_email.strip().lower()
+        allowed = _allowed_email_addresses(allowed_email, public_contacts)
         found = _EMAIL_PATTERN.findall(text)
-        # The configured Help Desk address is not personal data: a user writing
-        # "I already emailed helpdesk@..." must not be refused.
-        if any(address.lower() != allowed for address in found):
+        # The configured Help Desk address, and any address listed as a public
+        # service contact, are not personal data: a user writing "I already
+        # emailed helpdesk@..." must not be refused, and neither must a model
+        # answering with the contact it was instructed to offer.
+        if any(address.lower() not in allowed for address in found):
             matched.append("email")
 
     if detect_codice_fiscale and any(
@@ -426,7 +508,7 @@ def matched_personal_data_kinds(
     ):
         matched.append("iban")
 
-    if detect_phone and found_phone_numbers(text, phone_region):
+    if detect_phone and found_phone_numbers(text, phone_region, public_contacts):
         matched.append("phone")
 
     return tuple(matched)
@@ -441,6 +523,7 @@ def _check_personal_data_with_verdict(
     detect_phone: bool = True,
     allowed_email: str = "",
     phone_region: str = DEFAULT_PHONE_REGION,
+    public_contacts: Sequence[str] = (),
 ) -> str | None:
     """Stop text carrying personal data, returning the caller's verdict.
 
@@ -456,6 +539,7 @@ def _check_personal_data_with_verdict(
         detect_phone=detect_phone,
         allowed_email=allowed_email,
         phone_region=phone_region,
+        public_contacts=public_contacts,
     ):
         return verdict
     return None
@@ -469,6 +553,7 @@ def check_personal_data(
     detect_phone: bool = True,
     allowed_email: str = "",
     phone_region: str = DEFAULT_PHONE_REGION,
+    public_contacts: Sequence[str] = (),
 ) -> str | None:
     """Stop incoming messages carrying personal data."""
     return _check_personal_data_with_verdict(
@@ -480,6 +565,7 @@ def check_personal_data(
         detect_phone=detect_phone,
         allowed_email=allowed_email,
         phone_region=phone_region,
+        public_contacts=public_contacts,
     )
 
 
@@ -491,6 +577,7 @@ def check_output_personal_data(
     detect_phone: bool = True,
     allowed_email: str = "",
     phone_region: str = DEFAULT_PHONE_REGION,
+    public_contacts: Sequence[str] = (),
 ) -> str | None:
     """Stop outgoing answers carrying personal data."""
     return _check_personal_data_with_verdict(
@@ -502,6 +589,7 @@ def check_output_personal_data(
         detect_phone=detect_phone,
         allowed_email=allowed_email,
         phone_region=phone_region,
+        public_contacts=public_contacts,
     )
 
 
@@ -522,6 +610,7 @@ def _run_personal_data_check(text: str, config: Any) -> str | None:
         detect_phone=config.detect_input_phone,
         allowed_email=config.help_desk_email,
         phone_region=config.input_phone_region,
+        public_contacts=parse_public_contacts(config.public_service_contacts),
     )
 
 

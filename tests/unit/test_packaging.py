@@ -74,6 +74,27 @@ class TestReleasePackageContents:
         # list. The build raises on it, but only when someone runs the build.
         assert load_packaging_module().validate_included_files()
 
+    def test_requirements_carry_nothing_the_core_cannot_parse(self):
+        # Regression test. The core does not use pip to read this file: it calls
+        # packaging's Requirement() on every line it finds, inside a try that
+        # catches and abandons the whole loop. One comment or blank line
+        # therefore does not skip that line, it skips **every dependency**, and
+        # the only symptom is one ERROR in the log while activation continues.
+        # The plugin then loads on a machine that happens to have the packages
+        # already, and fails at import on a clean one.
+        requirements = (REPO_ROOT / "requirements.txt").read_text(encoding="utf-8")
+
+        offending = [
+            line
+            for line in requirements.splitlines()
+            if not line.strip() or line.lstrip().startswith("#")
+        ]
+        assert not offending, (
+            f"requirements.txt carries lines the core cannot parse: {offending}. "
+            "Comments and blank lines are valid for pip and fatal here: they "
+            "make the core install no dependency at all."
+        )
+
     def test_no_development_material_is_shipped(self):
         # `DOC/` is internal documentation and `DEV/` is private: neither ships
         # unless that is an explicit decision, and tests never ship at all.

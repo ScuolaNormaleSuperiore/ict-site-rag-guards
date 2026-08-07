@@ -36,6 +36,48 @@ input. The difference is not the detection logic, but the point in the flow,
 the fallback text shown to the user, and the fact that output detectors are now
 configured independently from input detectors.
 
+### Contacts that are not personal data
+
+Two exemptions apply to the e-mail and phone detectors, on **both** stages.
+
+The address configured as `Help Desk e-mail` is always exempt. Anything listed
+in `Privacy guards: public service contacts` is exempt as well — one contact per
+line, e-mail addresses and phone numbers in the same field.
+
+The exemption exists because without it the guard contradicts the deployment.
+The prompt asks the model to point the user at the Help Desk when it cannot
+answer; an answer that obeys carries a published contact, and a detector with no
+notion of "published" reads that as a leak and discards the whole reply. The
+same asymmetry applies on input, where a user writing *"I already called
+050 509111"* would be refused.
+
+Three properties of how it is implemented are worth knowing, because each one is
+a decision rather than an accident:
+
+- **The exclusion happens at match time, not after a verdict.** An exempt
+  contact never enters the set of matched detectors, so there is no verdict to
+  forgive. The consequence that matters: a text carrying a public contact *and*
+  a personal one still blocks, because the personal one is still in the set.
+- **Phone numbers are compared as numbers, not as strings.** Both sides are
+  normalised to E.164 before comparison, so an entry written `+39050509111`
+  exempts a reply that says `050 509111`, and the other way round. A number
+  written without an international prefix is resolved against the region of the
+  stage doing the checking, and the two stages have separate region settings —
+  which is why the field asks for the international prefix.
+- **The list is shared by both stages, deliberately**, unlike the detector
+  toggles and the regions. Whether a contact is published is a property of the
+  contact, not of the direction it travels in; a per-stage list would only
+  permit the incoherent state where a number is public on the way out and
+  private on the way in.
+
+An entry that does not parse is dropped rather than raised on, so one wrong line
+cannot stop the guard from working. The settings model rejects malformed entries
+when the panel is saved, which is where the mistake is visible.
+
+The log follows the same rule: an exempt number is excluded from the detail as
+well, so a block caused by a personal number does not report the kind of the
+service number that happened to sit in the same sentence.
+
 ## What happens when it blocks
 
 When the check fires:
@@ -60,6 +102,11 @@ The current output-side settings are:
 
 The output-side guard is active whenever at least one of those output detectors
 is enabled.
+
+One setting is shared with the input stage rather than duplicated, for the
+reason given above:
+
+- `Privacy guards: public service contacts (not treated as personal data)`
 
 The corresponding input-side privacy settings are independent:
 
