@@ -1,7 +1,7 @@
-# RAG Guards
+# RAG Guardrails
 
 
-`RAG Guards` is a Cheshire Cat AI plugin for website-based ICT support chatbots.
+`RAG Guardrails` is a Cheshire Cat AI plugin for website-based help-desk chatbots.
 
 It adds deterministic and configurable guardrails around the normal RAG flow so that risky or invalid requests can be stopped early, before they reach retrieval or generation.
 
@@ -80,13 +80,13 @@ Sharing an installation with other plugins is supported: when one of its own che
 1. Copy the plugin folder into the Cheshire Cat plugins directory.
 2. Start or restart Cheshire Cat AI.
 3. Open the Cheshire Cat admin panel.
-4. Enable `RAG Guards` from the plugins list.
+4. Enable `RAG Guardrails` from the plugins list.
 
 ## Configuration
 
 After activation, open:
 
-`Plugins -> RAG Guards -> Settings`
+`Plugins -> RAG Guardrails -> Settings`
 
 Settings are named after the guard family they belong to, so related options
 read together in the form:

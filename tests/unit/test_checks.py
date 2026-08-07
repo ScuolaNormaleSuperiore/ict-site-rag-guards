@@ -166,7 +166,7 @@ class TestCheckPersonalData:
     @pytest.mark.parametrize(
         "message",
         [
-            # The false positives that matter on an ICT help desk: error codes,
+            # The false positives that matter on a help desk: error codes,
             # ports, versions and dates are numeric and must pass.
             "Ricevo l'errore 0x80070005 sulla porta 8080, il PC è Windows 11",
             "La riunione è il 01.02.2026 alle 14, come attivo la VPN?",

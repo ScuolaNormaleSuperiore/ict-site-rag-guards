@@ -72,7 +72,7 @@ Meaning of each category:
 - `tone`
   - register: how the user expresses themselves, and how the assistant does
   - examples: offensive or violent incoming message; answer written in a
-    non-institutional tone
+    non-default tone
 - `quality`
   - answer correctness or fitness problems that are not primarily privacy,
     security or register issues

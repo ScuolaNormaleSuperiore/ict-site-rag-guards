@@ -33,7 +33,7 @@ class TestPluginMetadata:
     def test_plugin_json_matches_the_repository_identity(self):
         plugin = read_json("plugin.json")
 
-        assert plugin["name"] == "RAG Guards"
+        assert plugin["name"] == "RAG Guardrails"
         assert "guardrails" in plugin["description"].lower()
         assert "rag flow" in plugin["description"].lower()
         assert "retrieval or generation" in plugin["description"].lower()

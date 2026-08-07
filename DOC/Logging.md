@@ -1,6 +1,6 @@
 # Logging
 
-How `RAG Guards` reports its activity in the logs.
+How `RAG Guardrails` reports its activity in the logs.
 
 This document is the detailed reference for guard-related log lines. The
 taxonomy of `stage`, `category` and `verdict` is defined in

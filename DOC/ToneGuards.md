@@ -103,8 +103,8 @@ On the installed instance with the default model, blocking sum per message:
 
 | Message | Sum | At 0.60 | At 0.85 |
 | --- | --- | --- | --- |
-| Legitimate ICT question, IT | 0.006 | passes | passes |
-| Legitimate ICT question, EN | 0.017 | passes | passes |
+| Legitimate help-desk question, IT | 0.006 | passes | passes |
+| Legitimate help-desk question, EN | 0.017 | passes | passes |
 | Exasperated user swearing at a broken service | 0.423 | passes | passes |
 | Explicit hate speech, IT | **0.782** | **refused** | passes |
 | Insult, IT | 0.984 | refused | refused |
@@ -123,7 +123,7 @@ the check in production.
 The blocking set is `offensive` and `violent`. The four-class models also expose
 `inappropriate` — vulgar or rude, with no target — and it is deliberately left out.
 
-An ICT help desk receives exasperated users, and «questa maledetta VPN non
+A help desk receives exasperated users, and «questa maledetta VPN non
 funziona mai» falls on `inappropriate`: it is a support request written badly.
 Refusing it is the kind of error that gets a guard switched off by the
 administrator, and then the protection is not smaller, it is absent.
@@ -161,7 +161,7 @@ counting positions, and it lets the log say `label=violent` rather than
 `label=LABEL_3`. For the default model the mapping is
 `LABEL_0` appropriate, `LABEL_1` inappropriate, `LABEL_2` offensive,
 `LABEL_3` violent — an ordering confirmed by inference, not only by the model
-card: a legitimate ICT question scores 0.99 on `LABEL_0`, an insult 0.98 on
+card: a legitimate help-desk question scores 0.99 on `LABEL_0`, an insult 0.98 on
 `LABEL_2`, a threat 1.00 on `LABEL_3`.
 
 Configuration is by model choice, never by writing label strings in the admin

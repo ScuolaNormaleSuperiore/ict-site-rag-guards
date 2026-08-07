@@ -161,7 +161,7 @@ One important decision is explicit here:
 
 - `INAPPROPRIATE` is **not** a blocking class
 
-That is intentional, because an ICT help desk receives frustrated and rude users
+That is intentional, because a generic help desk receives frustrated and rude users
 whose messages should not automatically be refused.
 
 ### Decision rule

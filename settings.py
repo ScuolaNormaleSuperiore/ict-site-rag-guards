@@ -52,13 +52,13 @@ DEFAULT_HELP_DESK_EMAIL = "helpdesk@example.org"
 # languages are present.
 DEFAULT_MESSAGE_TOO_LONG = (
     "La tua richiesta è troppo lunga per essere elaborata. "
-    "Riformulala in modo più breve, indicando solo il servizio ICT "
+    "Riformulala in modo più breve, indicando solo il servizio "
     "di tuo interesse. Per richieste complesse puoi scrivere "
-    "all'Help Desk ICT: {help_desk_email}\n\n"
+    "all'Help Desk: {help_desk_email}\n\n"
     "Your request is too long to be processed. "
-    "Please rephrase it more briefly, mentioning only the ICT service "
+    "Please rephrase it more briefly, mentioning only the service "
     "you are asking about. For complex requests you can write to "
-    "the ICT Help Desk: {help_desk_email}"
+    "the Help Desk: {help_desk_email}"
 )
 
 # The claim about storage is deliberately narrow, and true only on this path:
@@ -73,12 +73,12 @@ DEFAULT_PERSONAL_DATA_DETECTED = (
     "chatbot. Riformula la richiesta descrivendo solo il servizio o il "
     "problema, senza indirizzi e-mail, numeri di telefono, codice fiscale o "
     "dati bancari. Se il tuo caso richiede dati personali, scrivi "
-    "all'Help Desk ICT: {help_desk_email}\n\n"
+    "all'Help Desk: {help_desk_email}\n\n"
     "To protect your data I cannot process messages containing personal "
     "information. Your message was not stored in the chatbot's memory. "
     "Please rephrase your request describing only the service or the problem, "
     "without e-mail addresses, phone numbers, tax codes or bank details. "
-    "If your case requires personal data, write to the ICT Help Desk: "
+    "If your case requires personal data, write to the Help Desk: "
     "{help_desk_email}"
 )
 
@@ -87,38 +87,38 @@ DEFAULT_OUTPUT_PERSONAL_DATA_DETECTED = (
     "dati personali. Riformula la richiesta descrivendo solo il servizio o il "
     "problema, senza indirizzi e-mail, numeri di telefono, codice fiscale o "
     "dati bancari. Se il tuo caso richiede dati personali, scrivi "
-    "all'Help Desk ICT: {help_desk_email}\n\n"
+    "all'Help Desk: {help_desk_email}\n\n"
     "To protect your data I cannot send a reply containing personal "
     "information. Please rephrase your request describing only the service or "
     "the problem, without e-mail addresses, phone numbers, tax codes or bank "
-    "details. If your case requires personal data, write to the ICT Help "
-    "Desk: {help_desk_email}"
+    "details. If your case requires personal data, write to the Help Desk: "
+    "{help_desk_email}"
 )
 
 DEFAULT_PROMPT_INJECTION_DETECTED = (
     "Non posso elaborare richieste che cercano di modificare le istruzioni o "
     "di ottenere informazioni interne del chatbot. Riformula la domanda come "
-    "richiesta di supporto ICT sul servizio che ti interessa, senza chiedere "
+    "richiesta di supporto sul servizio che ti interessa, senza chiedere "
     "di ignorare regole o rivelare prompt interni. Se hai bisogno di "
-    "assistenza, scrivi all'Help Desk ICT: {help_desk_email}\n\n"
+    "assistenza, scrivi all'Help Desk: {help_desk_email}\n\n"
     "I cannot process requests that try to alter the chatbot's instructions "
     "or obtain its internal information. Please rephrase your question as an "
-    "ICT support request about the service you need, without asking to ignore "
-    "rules or reveal hidden prompts. If you need assistance, write to the ICT "
+    "help-desk request about the service you need, without asking to ignore "
+    "rules or reveal hidden prompts. If you need assistance, write to the "
     "Help Desk: {help_desk_email}"
 )
 
 
 DEFAULT_OFFENSIVE_INPUT_DETECTED = (
     "Non posso elaborare messaggi con contenuti offensivi o violenti. "
-    "Sono qui per aiutarti sui servizi ICT: riformula la richiesta descrivendo "
+    "Sono qui per aiutarti sui servizi del sito: riformula la richiesta descrivendo "
     "il problema tecnico che stai riscontrando e la seguo volentieri. "
-    "Se preferisci parlare con una persona, scrivi all'Help Desk ICT: "
+    "Se preferisci parlare con una persona, scrivi all'Help Desk: "
     "{help_desk_email}\n\n"
     "I cannot process messages containing offensive or violent content. "
-    "I am here to help you with ICT services: please rephrase your request "
+    "I am here to help you with site services: please rephrase your request "
     "describing the technical problem you are facing and I will gladly follow "
-    "up. If you would rather talk to a person, write to the ICT Help Desk: "
+    "up. If you would rather talk to a person, write to the Help Desk: "
     "{help_desk_email}"
 )
 
