@@ -1,0 +1,24 @@
+# Line endings, decided once so no tool can decide differently.
+#
+# Before this file the repository was inconsistent: 16 files pure LF, 7 pure
+# CRLF and 12 mixed, with no rule anywhere. Any tool that rewrote a file
+# normalised it to the platform default and put dozens of whitespace-only lines
+# in the diff, burying the real change.
+#
+# `text=auto` stores every text file with LF and lets Git detect binaries;
+# `eol=lf` also writes LF into the working tree, so the choice survives a
+# checkout on Windows instead of being undone by it.
+* text=auto eol=lf
+
+# Shell scripts must be LF wherever they are checked out. The kernel reads the
+# shebang literally, so a CRLF makes it `/bin/sh\r` and the script dies with
+# "bad interpreter". These are the Git hooks — the secret scan and the unit-test
+# gate — so the failure would be silent exactly where it matters most.
+*.sh text eol=lf
+.githooks/pre-commit text eol=lf
+.githooks/commit-msg text eol=lf
+
+# Binary, never touched. Git's own detection already gets this right; the rule
+# is explicit because a mistake here corrupts the image in a way that is not
+# obvious until someone opens it.
+*.png binary
