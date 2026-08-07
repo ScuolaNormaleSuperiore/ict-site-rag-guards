@@ -148,12 +148,6 @@ def run_container_suite(detailed: bool) -> int:
         "python",
         "-m",
         "pytest",
-        # The plugin folder is bind-mounted, so a .pytest_cache created by a
-        # local run belongs to the host user and the container cannot write
-        # into it. Nothing here uses --lf or --ff, so drop the cache rather
-        # than warn about it on every run.
-        "-p",
-        "no:cacheprovider",
     ]
     if detailed:
         command.append("-v")

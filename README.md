@@ -29,7 +29,7 @@ Currently implemented:
 
 Planned next steps include prompt policy, further output checks, and telemetry.
 
-The naming of guards is documented in [DOC/GuardTaxonomy.md](DOC/GuardTaxonomy.md). The plugin keeps three axes separate:
+The naming of guards is documented in [DOC/GuardTaxonomy.md](https://github.com/ScuolaNormaleSuperiore/rag-guardrails/blob/main/DOC/GuardTaxonomy.md). The plugin keeps three axes separate:
 
 - `stage`: where the control acts
 - `category`: what kind of risk it addresses
@@ -145,9 +145,9 @@ In practice:
 
 Detailed behavior of the classifier-based and output-side guards lives in:
 
-- [DOC/SecurityGuards.md](DOC/SecurityGuards.md)
-- [DOC/ToneGuards.md](DOC/ToneGuards.md)
-- [DOC/OutputGuards.md](DOC/OutputGuards.md)
+- [DOC/SecurityGuards.md](https://github.com/ScuolaNormaleSuperiore/rag-guardrails/blob/main/DOC/SecurityGuards.md)
+- [DOC/ToneGuards.md](https://github.com/ScuolaNormaleSuperiore/rag-guardrails/blob/main/DOC/ToneGuards.md)
+- [DOC/OutputGuards.md](https://github.com/ScuolaNormaleSuperiore/rag-guardrails/blob/main/DOC/OutputGuards.md)
 
 ## Guard Order
 
@@ -172,7 +172,7 @@ This means:
 
 For a detailed reference of the log lines emitted by the plugin — active-guard
 announcements, block lines, allowed-path debug lines, and logging boundaries —
-see [DOC/Logging.md](DOC/Logging.md).
+see [DOC/Logging.md](https://github.com/ScuolaNormaleSuperiore/rag-guardrails/blob/main/DOC/Logging.md).
 
 ## Development
 
@@ -184,7 +184,7 @@ Main files:
 - `offensive_input_classifier.py`: the sum of a model's offensive classes against a threshold
 - `settings.py`: plugin settings model and shipped defaults
 - `rag_guardrails.py`: Cheshire Cat hooks and settings loading
-- `tests/`: the test suite, described in [DOC/TestingCode.md](DOC/TestingCode.md)
+- `tests/`: the test suite, described in [DOC/TestingCode.md](https://github.com/ScuolaNormaleSuperiore/rag-guardrails/blob/main/DOC/TestingCode.md)
 
 Project-specific architecture notes and development guidance live under
 `DEV/AGENTS/`.
@@ -206,18 +206,18 @@ python run-tests.py
 These are the only two commands needed to run the tests. Everything else about
 testing — the test layout, which tests need the Cheshire Cat container, how the
 runner behaves, and what is verified manually — is in
-[DOC/TestingCode.md](DOC/TestingCode.md).
+[DOC/TestingCode.md](https://github.com/ScuolaNormaleSuperiore/rag-guardrails/blob/main/DOC/TestingCode.md).
 
 ## Related Docs
 
-- [DOC/ClassifierLabels.md](DOC/ClassifierLabels.md): how classifier labels are mapped, verified, and used in decisions
-- [DOC/GuardTaxonomy.md](DOC/GuardTaxonomy.md): taxonomy of `stage`, `category` and `verdict`
-- [DOC/ClassifierCache.md](DOC/ClassifierCache.md): how the local-classifier cache and negative cache work
-- [DOC/SecurityGuards.md](DOC/SecurityGuards.md): prompt-injection guard details
-- [DOC/ToneGuards.md](DOC/ToneGuards.md): offensive-input guard details
-- [DOC/OutputGuards.md](DOC/OutputGuards.md): output-side privacy guard details
-- [DOC/Logging.md](DOC/Logging.md): detailed log reference
-- [DOC/TestingCode.md](DOC/TestingCode.md): test layout, runners and manual checks
+- [DOC/ClassifierLabels.md](https://github.com/ScuolaNormaleSuperiore/rag-guardrails/blob/main/DOC/ClassifierLabels.md): how classifier labels are mapped, verified, and used in decisions
+- [DOC/GuardTaxonomy.md](https://github.com/ScuolaNormaleSuperiore/rag-guardrails/blob/main/DOC/GuardTaxonomy.md): taxonomy of `stage`, `category` and `verdict`
+- [DOC/ClassifierCache.md](https://github.com/ScuolaNormaleSuperiore/rag-guardrails/blob/main/DOC/ClassifierCache.md): how the local-classifier cache and negative cache work
+- [DOC/SecurityGuards.md](https://github.com/ScuolaNormaleSuperiore/rag-guardrails/blob/main/DOC/SecurityGuards.md): prompt-injection guard details
+- [DOC/ToneGuards.md](https://github.com/ScuolaNormaleSuperiore/rag-guardrails/blob/main/DOC/ToneGuards.md): offensive-input guard details
+- [DOC/OutputGuards.md](https://github.com/ScuolaNormaleSuperiore/rag-guardrails/blob/main/DOC/OutputGuards.md): output-side privacy guard details
+- [DOC/Logging.md](https://github.com/ScuolaNormaleSuperiore/rag-guardrails/blob/main/DOC/Logging.md): detailed log reference
+- [DOC/TestingCode.md](https://github.com/ScuolaNormaleSuperiore/rag-guardrails/blob/main/DOC/TestingCode.md): test layout, runners and manual checks
 
 ## Packaging
 
@@ -261,7 +261,7 @@ The applicable version, read from the model card on 2026-08-06, is the
 **Llama 4 Community License Agreement** (`license_name: llama4`). Both Meta
 models are **gated**: access is granted manually by Meta after the request is
 accepted, so using them requires accepting Meta's terms on the model page and
-authenticating at runtime. See [DOC/SecurityGuards.md](DOC/SecurityGuards.md)
+authenticating at runtime. See [DOC/SecurityGuards.md](https://github.com/ScuolaNormaleSuperiore/rag-guardrails/blob/main/DOC/SecurityGuards.md)
 for the operational steps.
 
 ### Licence of each supported model

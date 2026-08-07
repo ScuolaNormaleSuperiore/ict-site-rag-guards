@@ -5,7 +5,7 @@
     "author_name": "Servizi Informativi SNS",
     "author_url": "https://ict.sns.it",
     "plugin_url": "https://github.com/ScuolaNormaleSuperiore/rag-guardrails",
-    "tags": "guardrails, rag, safety, privacy, security, moderation, chatbot, hepdesk",
+    "tags": "guardrails, rag, safety, privacy, security, moderation, chatbot, helpdesk",
     "thumb": "https://raw.githubusercontent.com/ScuolaNormaleSuperiore/rag-guardrails/main/logo.png"
 }
 
