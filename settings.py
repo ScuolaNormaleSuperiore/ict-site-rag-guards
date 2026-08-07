@@ -345,8 +345,10 @@ class IctSiteRagGuardsSettings(BaseModel):
         description=(
             "Optional user access token for gated Hugging Face models. Needed "
             "only for classifier models that require authenticated access, "
-            "such as the Meta Llama Prompt Guard models. If the HF_TOKEN "
-            "environment variable is set, it takes precedence over this field."
+            "such as the Meta Llama Prompt Guard models. Prefer the HF_TOKEN "
+            "environment variable for real deployments: it takes precedence "
+            "over this field and avoids storing the token in settings.json. "
+            "Use this field only as a weaker local fallback."
         ),
     )
 

@@ -156,6 +156,18 @@ This is deliberate:
 - installations that prefer a plugin-local configuration can still use the
   admin setting
 
+The recommended operating model for publication is therefore explicit:
+
+1. prefer `HF_TOKEN` in the environment for any real deployment
+2. treat `HUGGING_FACE_HUB_TOKEN` only as a legacy compatibility path
+3. use the admin-panel field only as a weaker fallback for local or temporary setups
+
+The reason is not cosmetic. The environment path keeps the token out of
+`settings.json`, while the admin-panel field stores it there in plain text under
+the plugin directory. `settings.json` is ignored by Git, so this is not a source
+control leak by itself, but it is still persistence on disk and should be chosen
+deliberately rather than by accident.
+
 The token is used only to load gated classifier models. Public models do not
 need it.
 

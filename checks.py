@@ -20,6 +20,7 @@ rewriting them.
 """
 
 import re
+import unicodedata
 from typing import Any, Mapping
 
 import phonenumbers
@@ -180,8 +181,11 @@ _CODICE_FISCALE_PATTERN = re.compile(
     r"\b[A-Za-z]{6}\d{2}[ABCDEHLMPRSTabcdehlmprst]\d{2}[A-Za-z]\d{3}[A-Za-z]\b"
 )
 
-# Country code, two check digits, then the national part.
-_IBAN_PATTERN = re.compile(r"\b[A-Za-z]{2}\d{2}[A-Za-z0-9]{11,30}\b")
+# Country code, two check digits, then the national part. Spaces and
+# non-breaking spaces are allowed between characters because that grouped shape
+# is what users actually copy from statements and banking portals; the checksum
+# below keeps the widened candidate finder precise.
+_IBAN_PATTERN = re.compile(r"\b[A-Za-z]{2}\d{2}(?:[ \u00A0]?[A-Za-z0-9]){11,30}\b")
 
 # Region assumed for numbers written without an international prefix. A number
 # is only valid relative to a numbering plan, so this has to be configurable:
@@ -263,9 +267,16 @@ def _normalize_for_prompt_injection(text: str) -> str:
     """Normalize free text for the conservative custom detector.
 
     The detector is phrase-based, not token-model based, so only cheap and
-    predictable normalization belongs here: lowercase and whitespace collapse.
+    predictable normalization belongs here: NFKC compatibility normalization,
+    removal of Unicode format characters, lowercase and whitespace collapse.
     """
-    return " ".join(text.casefold().split())
+    normalized = unicodedata.normalize("NFKC", text)
+    stripped = "".join(
+        character
+        for character in normalized
+        if unicodedata.category(character) != "Cf"
+    )
+    return " ".join(stripped.casefold().split())
 
 
 def matched_prompt_injection_pattern(
@@ -330,7 +341,7 @@ def _is_valid_iban(candidate: str) -> bool:
     The first four characters move to the end, letters become numbers, and the
     resulting integer must leave a remainder of one when divided by 97.
     """
-    candidate = candidate.upper()
+    candidate = candidate.replace(" ", "").replace("\u00A0", "").upper()
     if not 15 <= len(candidate) <= 34:
         return False
 
